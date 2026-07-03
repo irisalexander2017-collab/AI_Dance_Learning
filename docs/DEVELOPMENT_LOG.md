@@ -28,3 +28,36 @@
 - Landscape videos retain their existing contain/cover behavior, including the selected mode in fullscreen.
 - Verified real portrait dragging, boundary clamping, reset, state preservation, persistence, landscape cover behavior, production build, and clean browser console output.
 - Fullscreen entry/exit restoration requires user manual verification because the automated browser restricts fullscreen control.
+
+## 2026-07-03 — Phase 2A
+
+- Added manual BPM input and a real-second beat timeline containing integer beats and half-beat `and` points.
+- Added manual music-one marking with half-beat and full-beat calibration controls.
+- Added user-confirmed formal choreography start marking, nearest integer/half-beat snapping, delta display, and confirmation.
+- Added continuous eight-beat learning segments with incomplete-final-segment labeling; media remains one original file.
+- Added current, previous-plus-current, from-formal-start, and full-video practice ranges.
+- Added loop settings, four-beat visual/voice count-in, integer/half/prep-only/off count modes, and an in-player beat strip.
+- Added browser-local English speech synthesis through an isolated hook; screen timing remains authoritative.
+- Added per-video practice persistence keyed by file name, size, and last-modified time.
+- Pure timeline assertions and browser interaction tests passed. Automated media playback, loop timing, speech audibility, and fullscreen beat-strip visibility require user verification because the automation browser rejected Blob media playback/fullscreen.
+
+## 2026-07-03 — Phase 2A.1
+
+- Removed Web Speech API integration, all count modes, count-in scheduling, and beat-strip highlighting, including the now-unused speech hook.
+- Replaced configurable loop/count orchestration with two explicit modes: fixed two-second loop and continuous current-segment advance.
+- Added cancellation of pending loop restarts on manual pause, range changes, segment changes, video replacement, and playback-mode changes.
+- Kept the video visible in a sticky approximately 60vh practice area; collapsed low-frequency beat setup automatically after formal-start confirmation.
+- Added a custom fullscreen root containing video, progress, compact status, and a collapsible left/right sidebar whose side is persisted locally.
+- Added Up/Down segment navigation, L playback-mode switching, and F fullscreen switching while preserving input-field shortcut guards.
+- Frontend production build passed. Local browser automation could not connect to the development listener, so media/fullscreen behavior requires user manual verification.
+
+## 2026-07-03 — Phase 2A.1 Blocking Regression Fix
+
+- Restored an always-visible normal-page playback row independent of whether learning segments have already been generated.
+- Kept one real video element and one video ref; normal-page, practice-panel, fullscreen-sidebar, Space, and media events use the same playback state and toggle handler.
+- Replaced the cross-video global portrait pan recovery with per-video pan persistence. New videos default to center; restored values are clamped after metadata loads.
+- Reconnected `contain`/`cover` to the active video class and `object-position` to the active normal/fullscreen pan state.
+- Restored pointer capture, cover-overflow boundary calculation, pan persistence, and context-aware reset without reloading or changing playback settings.
+- Added temporary fullscreen display/pan state: portrait enters with contain, landscape retains its selected mode, and exiting restores normal-page mode/pan automatically.
+- Preserved learning-segment generation, manual BPM/beat setup, four practice ranges, fixed two-second loop, continuous next-segment behavior, compact layout, and fullscreen sidebar.
+- Production build passed. The managed browser could not access the local listener and blocked the local static test page, so real-media normal-page and fullscreen verification remains manual.
