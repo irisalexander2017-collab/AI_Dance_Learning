@@ -1,0 +1,36 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Node / Vite
+node_modules/
+frontend/dist/
+frontend/.npm-cache/
+*.tsbuildinfo
+*.local
+
+# Local data and generated media
+data/uploads/*
+data/processed/*
+data/analysis/*
+data/projects/*
+test_videos/*
+backups/*
+!data/uploads/.gitkeep
+!data/processed/.gitkeep
+!data/analysis/.gitkeep
+!data/projects/.gitkeep
+!test_videos/.gitkeep
+!backups/.gitkeep
+
+# Editors, OS, logs, and temporary files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.temp

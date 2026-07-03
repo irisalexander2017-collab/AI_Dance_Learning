@@ -1,0 +1,14 @@
+:root { font-family: Inter, system-ui, sans-serif; color: #f6f3ec; background: #15130f; font-synthesis: none; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; }
+.shell { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: radial-gradient(circle at top, #42371f, #15130f 58%); }
+.card { width: min(680px, 100%); padding: clamp(32px, 7vw, 72px); border: 1px solid #756548; border-radius: 24px; background: rgba(27, 24, 18, .9); box-shadow: 0 30px 80px rgba(0,0,0,.35); }
+.eyebrow { margin: 0 0 16px; color: #d6b873; font-size: .75rem; font-weight: 700; letter-spacing: .18em; }
+h1 { margin: 0; font-size: clamp(2.5rem, 8vw, 5rem); line-height: .98; letter-spacing: -.05em; }
+.tagline { margin: 24px 0 40px; color: #c9c2b4; font-size: 1.1rem; line-height: 1.6; }
+.status-list { display: grid; gap: 12px; padding-top: 24px; border-top: 1px solid #40392d; }
+.status { display: flex; align-items: center; gap: 10px; color: #e4ded2; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: #c69d46; box-shadow: 0 0 12px currentColor; }
+.dot.online { color: #67d697; background: currentColor; }
+.dot.offline { color: #ed7474; background: currentColor; }
+.dot.checking { color: #c69d46; background: currentColor; }
