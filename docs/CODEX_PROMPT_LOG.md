@@ -11,6 +11,15 @@ Record development prompts here when needed.
 - Not tested: MOV and WebM playback because matching test files were unavailable.
 - Known issues: Browser codec support can vary, especially for MOV files. Unsupported codecs produce the player error message and require a browser-compatible file. Video files intentionally do not persist across page refresh in Phase 1. The requested Git commit could not be created in the current managed environment because `.git/index.lock` remained write-protected after explicit permission requests.
 
+## 2026-07-03 — Phase 1.1: portrait cover dragging and fullscreen safety
+
+- Goal: Let users freely inspect any part of a portrait video in cover mode while guaranteeing fullscreen opens with the complete frame.
+- Scope delivered: Pointer dragging, cover-overflow boundary calculation, persistent portrait pan, recenter control, portrait-only fullscreen contain override, and automatic restoration after fullscreen exit.
+- Restrictions observed: No body-part buttons, tracking, MediaPipe, music analysis, beat or eight-count logic, choreography-start logic, FFmpeg, backend media storage, or new UI framework.
+- Test result: Real 720×1280 portrait and 960×540 landscape MP4 layouts were used. Dragging, boundary clamping, no-overflow recentering, speed/mirror/time preservation, reset, persistence, landscape cover regression, production build, and console checks passed.
+- Manual verification: Automated fullscreen entry is restricted by the browser test surface, so portrait contain-on-entry and cover/pan restoration-on-exit require user validation in the normal local browser.
+- Known issues: The downloaded portrait test media exposed metadata correctly but its codec was not playable in the automated browser; this did not prevent layout and drag verification.
+
 ## Template
 
 - Date:

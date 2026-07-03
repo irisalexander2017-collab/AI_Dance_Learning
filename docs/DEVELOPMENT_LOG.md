@@ -17,3 +17,14 @@
 - Persisted playback speed, mirror state, and volume in browser local storage.
 - Verified the player with a real MP4 sample; MOV and WebM were not tested because no test files were available.
 - Verified the existing backend health endpoint remained unchanged and healthy.
+
+## 2026-07-03 — Phase 1.1
+
+- Added automatic landscape, portrait, and square detection from video metadata.
+- Added persisted `完整画面` (`contain`) and `放大填充` (`cover`) display modes.
+- Added free mouse dragging for portrait video in cover mode, with persisted position and bounded movement.
+- Added `重置画面` to recenter the portrait crop without reloading or changing playback settings.
+- Portrait fullscreen now uses an effective contain override while preserving the user's normal-page mode and pan position for restoration after exit.
+- Landscape videos retain their existing contain/cover behavior, including the selected mode in fullscreen.
+- Verified real portrait dragging, boundary clamping, reset, state preservation, persistence, landscape cover behavior, production build, and clean browser console output.
+- Fullscreen entry/exit restoration requires user manual verification because the automated browser restricts fullscreen control.

@@ -3,6 +3,11 @@ import { ChangeEvent, useCallback, useEffect, useRef, useState } from 'react'
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000'
 const ALLOWED_EXTENSIONS = ['mp4', 'mov', 'webm']
 const SPEEDS = [0.5, 0.65, 0.8, 1] as const
+type VideoOrientation = 'landscape' | 'portrait' | 'square'
+type DisplayMode = 'contain' | 'cover'
+type PanPosition = { x: number; y: number }
+
+const CENTER_PAN: PanPosition = { x: 50, y: 50 }
 
 function readStoredNumber(key: string, fallback: number) {
   const stored = localStorage.getItem(key)
@@ -23,10 +28,25 @@ function formatFileSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+function readStoredPan(): PanPosition {
+  try {
+    const value = JSON.parse(localStorage.getItem('adl-portrait-pan') ?? '') as Partial<PanPosition>
+    const x = Number(value.x)
+    const y = Number(value.y)
+    return {
+      x: Number.isFinite(x) ? Math.min(100, Math.max(0, x)) : 50,
+      y: Number.isFinite(y) ? Math.min(100, Math.max(0, y)) : 50,
+    }
+  } catch {
+    return CENTER_PAN
+  }
+}
+
 function App() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const playerRef = useRef<HTMLDivElement>(null)
   const objectUrlRef = useRef<string | null>(null)
+  const dragRef = useRef<{ pointerId: number; startX: number; startY: number; pan: PanPosition } | null>(null)
   const [backendConnected, setBackendConnected] = useState<boolean | null>(null)
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
   const [fileName, setFileName] = useState('')
@@ -42,6 +62,15 @@ function App() {
   const [isMirrored, setIsMirrored] = useState(() => localStorage.getItem('adl-mirrored') === 'true')
   const [volume, setVolume] = useState(() => Math.min(1, Math.max(0, readStoredNumber('adl-volume', 1))))
   const [isMuted, setIsMuted] = useState(false)
+  const [orientation, setOrientation] = useState<VideoOrientation>('landscape')
+  const [displayMode, setDisplayMode] = useState<DisplayMode>(() => (
+    localStorage.getItem('adl-display-mode') === 'cover' ? 'cover' : 'contain'
+  ))
+  const [portraitPan, setPortraitPan] = useState<PanPosition>(readStoredPan)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+
+  const effectiveDisplayMode: DisplayMode = orientation === 'portrait' && isFullscreen ? 'contain' : displayMode
+  const canDragPortrait = orientation === 'portrait' && effectiveDisplayMode === 'cover'
 
   useEffect(() => {
     const controller = new AbortController()
@@ -58,6 +87,16 @@ function App() {
   useEffect(() => () => {
     if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
   }, [])
+
+  useEffect(() => {
+    const handleFullscreenChange = () => setIsFullscreen(document.fullscreenElement === playerRef.current)
+    document.addEventListener('fullscreenchange', handleFullscreenChange)
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
+  }, [])
+
+  useEffect(() => {
+    localStorage.setItem('adl-portrait-pan', JSON.stringify(portraitPan))
+  }, [portraitPan])
 
   const togglePlayback = useCallback(async () => {
     const video = videoRef.current
@@ -132,6 +171,7 @@ function App() {
     setDuration(0)
     setCurrentTime(0)
     setIsPlaying(false)
+    setOrientation('landscape')
     setError('')
   }
 
@@ -140,9 +180,70 @@ function App() {
     if (!video) return
     video.playbackRate = speed
     video.volume = volume
+    if (video.videoWidth === video.videoHeight) {
+      setOrientation('square')
+    } else if (video.videoWidth > video.videoHeight) {
+      setOrientation('landscape')
+    } else {
+      setOrientation('portrait')
+    }
     setDuration(video.duration)
     setError('')
   }
+
+  const changeDisplayMode = (nextMode: DisplayMode) => {
+    setDisplayMode(nextMode)
+    localStorage.setItem('adl-display-mode', nextMode)
+  }
+
+  const getCoverOverflow = () => {
+    const video = videoRef.current
+    if (!video || !video.videoWidth || !video.videoHeight) return { x: 0, y: 0 }
+    const scale = Math.max(video.clientWidth / video.videoWidth, video.clientHeight / video.videoHeight)
+    return {
+      x: Math.max(0, video.videoWidth * scale - video.clientWidth),
+      y: Math.max(0, video.videoHeight * scale - video.clientHeight),
+    }
+  }
+
+  const clampPanToCurrentVideo = (position: PanPosition) => {
+    const overflow = getCoverOverflow()
+    return {
+      x: overflow.x > 0 ? Math.min(100, Math.max(0, position.x)) : 50,
+      y: overflow.y > 0 ? Math.min(100, Math.max(0, position.y)) : 50,
+    }
+  }
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLVideoElement>) => {
+    if (!canDragPortrait) return
+    event.currentTarget.setPointerCapture(event.pointerId)
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      pan: portraitPan,
+    }
+  }
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLVideoElement>) => {
+    const drag = dragRef.current
+    if (!canDragPortrait || !drag || drag.pointerId !== event.pointerId) return
+    const overflow = getCoverOverflow()
+    const deltaX = event.clientX - drag.startX
+    const deltaY = event.clientY - drag.startY
+    setPortraitPan(clampPanToCurrentVideo({
+      x: overflow.x > 0 ? drag.pan.x + (isMirrored ? deltaX : -deltaX) / overflow.x * 100 : 50,
+      y: overflow.y > 0 ? drag.pan.y - deltaY / overflow.y * 100 : 50,
+    }))
+  }
+
+  const handlePointerEnd = (event: React.PointerEvent<HTMLVideoElement>) => {
+    if (dragRef.current?.pointerId !== event.pointerId) return
+    dragRef.current = null
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+  }
+
+  const resetPicture = () => setPortraitPan(CENTER_PAN)
 
   const changeSpeed = (nextSpeed: number) => {
     const video = videoRef.current
@@ -204,19 +305,25 @@ function App() {
           </label>
         ) : (
           <>
-            <div ref={playerRef} className="player-frame">
+            <div ref={playerRef} className={`player-frame ${orientation}`}>
               <video
                 ref={videoRef}
-                className={isMirrored ? 'mirrored' : ''}
+                className={`${orientation} ${effectiveDisplayMode}${isMirrored ? ' mirrored' : ''}${canDragPortrait ? ' draggable-video' : ''}`}
+                style={{ objectPosition: canDragPortrait ? `${portraitPan.x}% ${portraitPan.y}%` : '50% 50%' }}
                 src={videoUrl}
                 preload="metadata"
                 playsInline
+                draggable={false}
                 onLoadedMetadata={handleLoadedMetadata}
                 onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
                 onEnded={() => setIsPlaying(false)}
                 onError={() => setError('视频加载失败。此文件可能损坏，或编码不受当前浏览器支持。')}
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerEnd}
+                onPointerCancel={handlePointerEnd}
               />
               <div className="timeline-row">
                 <span>{formatTime(currentTime)}</span>
@@ -253,6 +360,14 @@ function App() {
                   {SPEEDS.map((value) => <button type="button" key={value} className={speed === value ? 'active' : ''} onClick={() => changeSpeed(value)}>{value}×</button>)}
                 </div>
               </div>
+              <div className="control-group display-mode-group">
+                <span className="control-label">画面</span>
+                <div className="segmented display-mode-buttons">
+                  <button type="button" className={displayMode === 'contain' ? 'active' : ''} aria-pressed={displayMode === 'contain'} onClick={() => changeDisplayMode('contain')}>完整画面</button>
+                  <button type="button" className={displayMode === 'cover' ? 'active' : ''} aria-pressed={displayMode === 'cover'} onClick={() => changeDisplayMode('cover')}>放大填充</button>
+                  <button type="button" onClick={resetPicture}>重置画面</button>
+                </div>
+              </div>
               <div className="control-group compact">
                 <button type="button" className={isMirrored ? 'active mirror-button' : 'mirror-button'} aria-pressed={isMirrored} onClick={toggleMirror}>镜像</button>
                 <button type="button" onClick={() => void enterFullscreen()}>全屏</button>
@@ -262,6 +377,7 @@ function App() {
                 <input aria-label="音量" type="range" min="0" max="1" step="0.05" value={volume} onChange={changeVolume} />
               </div>
             </div>
+            {canDragPortrait && <p className="drag-hint">拖动画面可查看不同身体部位</p>}
           </>
         )}
 
