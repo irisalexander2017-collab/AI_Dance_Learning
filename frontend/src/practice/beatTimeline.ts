@@ -1,4 +1,4 @@
-export type PracticeRangeMode = 'current' | 'previous-current' | 'from-start' | 'full'
+export type PracticeRangeMode = 'current' | 'previous-current' | 'from-start' | 'full' | 'preparation-first'
 
 export interface BeatPoint {
   time: number
@@ -20,6 +20,14 @@ export interface LearningSegment {
 export interface PracticeRange {
   startTime: number
   endTime: number
+}
+
+export function getPreparationRange(segments: LearningSegment[], bpm: number): PracticeRange | null {
+  if (segments.length === 0) return null
+  const formalStart = segments[0].startTime
+  const startTime = Math.max(0, formalStart - beatDuration(bpm) * 8)
+  if (startTime >= formalStart - 0.001) return null
+  return { startTime, endTime: segments[0].endTime }
 }
 
 const modulo = (value: number, divisor: number) => ((value % divisor) + divisor) % divisor
@@ -78,10 +86,15 @@ export function getPracticeRange(
   segments: LearningSegment[],
   currentIndex: number,
   duration: number,
+  bpm: number,
 ): PracticeRange {
   if (mode === 'full' || segments.length === 0) return { startTime: 0, endTime: duration }
   const safeIndex = Math.min(Math.max(0, currentIndex), segments.length - 1)
   const current = segments[safeIndex]
+  if (mode === 'preparation-first') {
+    if (safeIndex === 0) return getPreparationRange(segments, bpm) ?? current
+    return { startTime: current.startTime, endTime: current.endTime }
+  }
   if (mode === 'previous-current') return { startTime: segments[Math.max(0, safeIndex - 1)].startTime, endTime: current.endTime }
   if (mode === 'from-start') return { startTime: segments[0].startTime, endTime: current.endTime }
   return { startTime: current.startTime, endTime: current.endTime }

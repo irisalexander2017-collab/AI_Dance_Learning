@@ -1,0 +1,106 @@
+AI Dance Learning 本地启动说明
+================================
+
+项目位置：
+C:\Users\Iris\Desktop\AI_Dance_Learning
+
+
+【最简单的启动方式】
+
+1. 打开项目文件夹：
+C:\Users\Iris\Desktop\AI_Dance_Learning
+
+2. 在文件夹空白处点击右键，选择：
+“在终端中打开”
+或者打开 Windows PowerShell。
+
+3. 运行：
+
+powershell -ExecutionPolicy Bypass -File .\start_all.ps1
+
+这个命令会同时启动前端和后端。
+
+启动成功后，在浏览器打开：
+
+http://127.0.0.1:5173
+
+
+================================
+
+【如果 start_all.ps1 不工作，就分别启动】
+
+需要打开两个 PowerShell 窗口。
+
+
+第一个窗口：启动后端
+
+cd C:\Users\Iris\Desktop\AI_Dance_Learning
+
+powershell -ExecutionPolicy Bypass -File .\start_backend.ps1
+
+
+第二个窗口：启动前端
+
+cd C:\Users\Iris\Desktop\AI_Dance_Learning
+
+powershell -ExecutionPolicy Bypass -File .\start_frontend.ps1
+
+
+前端启动成功后，PowerShell 会显示类似：
+
+Local: http://127.0.0.1:5173/
+
+浏览器必须打开 PowerShell 实际显示的地址。
+
+
+================================
+
+【重要提醒】
+
+1. 前端和后端的 PowerShell 窗口要保持打开。
+2. 不要在软件运行时关闭这两个窗口。
+3. Codex 修改普通前端代码后，通常不需要重新启动。
+4. 页面没有变化时，先按：
+
+Ctrl + Shift + R
+
+强制刷新页面。
+
+5. 只有以下情况才重新启动：
+
+- PowerShell 窗口被关闭；
+- PowerShell 出现红色错误并停止；
+- 浏览器无法打开 127.0.0.1:5173；
+- 修改了 package.json、Vite 配置或安装了新依赖。
+
+
+================================
+
+【停止软件】
+
+关闭前端和后端的 PowerShell 窗口即可。
+
+也可以在 PowerShell 中按：
+
+Ctrl + C
+
+
+================================
+
+【Git 保存代码】
+
+查看状态：
+
+git status
+
+保存全部修改：
+
+git add .
+
+创建本地版本：
+
+git commit -m "写本次修改内容"
+
+上传到 GitHub：
+
+git push
