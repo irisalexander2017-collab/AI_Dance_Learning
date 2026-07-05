@@ -18,6 +18,7 @@ type PlaybackMode = 'loop' | 'continuous'
 type SidebarSide = 'left' | 'right'
 type TeacherFraming = { zoom: number; panX: number; panY: number }
 type UiLanguage = 'zh' | 'en'
+type RecordingStatus = 'idle' | 'countdown' | 'recording' | 'processing' | 'ready' | 'error'
 
 interface SavedPracticeState {
   bpm: number
@@ -44,6 +45,9 @@ const DEFAULT_TEACHER_FRAMING: TeacherFraming = { zoom: 1, panX: 0, panY: 0 }
 const MIN_TEACHER_ZOOM = 1
 const MAX_TEACHER_ZOOM = 3
 const TEACHER_ZOOM_STEP = 0.25
+const RECORDING_WIDTH = 1280
+const RECORDING_HEIGHT = 720
+const RECORDING_FPS = 30
 
 function readStoredNumber(key: string, fallback: number) {
   const stored = localStorage.getItem(key)
@@ -91,15 +95,17 @@ function LandingPage({ onStart, language, setLanguage }: { onStart: () => void; 
     ['设置节拍与起点', '输入 BPM，拖动进度条标记音乐第一拍，再标记并确认正式编舞起点。'],
     ['选择分段练习方式', '练习预备段＋第1段、当前段、前一段＋当前段、从起点到当前或完整舞蹈；可循环停 2 秒或连续播放。'],
     ['控制播放', '使用播放、暂停、回看 2 秒、前进 2 秒、四档速度、教师镜像和全屏。'],
-    ['与摄像头对比', '打开摄像头后，教师与自己同时显示。自己的画面默认镜像；摄像头只在本机显示，不上传、不录制。点击“关闭摄像头”即可结束并关闭设备。'],
+    ['与摄像头对比', '打开摄像头后，教师与自己同时显示。自己的画面默认镜像；摄像头画面保留在本机，不会上传。点击“关闭摄像头”即可结束并关闭设备。'],
     ['调整教师画面', '使用“适应、−、＋、重置”缩放教师视频。放大后可向左、右、上、下拖动；普通/全屏、单画面/摄像头分屏均可使用，只有教师视频移动。'],
+    ['录制并回看练习', '在摄像头对比中选择 3、5 或 10 秒倒计时，从当前练习段起点录制干净的左右分屏。练习录像包含老师视频的声音，不会录制麦克风或环境声音；录像只在浏览器本地生成。'],
   ] : [
     ['Upload a dance video', 'Choose a local MP4, MOV, or WebM file. The video opens only in your browser and is not uploaded.'],
     ['Set the beat and start point', 'Enter the BPM, drag the timeline to mark beat one, then mark and confirm the choreography start.'],
     ['Choose how to practise sections', 'Practise the preparation lead-in plus section 1, current section, previous plus current, start to current, or full dance. Use a two-second loop pause or continuous playback.'],
     ['Control playback', 'Play, pause, go back 2 seconds, go forward 2 seconds, choose a speed, mirror the teacher, or enter fullscreen.'],
-    ['Compare with your camera', 'Show the teacher and yourself together. Your self-view is mirrored by default. Camera video stays on this device and is never uploaded or recorded. Select “Turn camera off” to stop the camera.'],
+    ['Compare with your camera', 'Show the teacher and yourself together. Your self-view is mirrored by default. Camera video stays on this device and is never uploaded. Select “Turn camera off” to stop the camera.'],
     ['Reframe the teacher video', 'Use Fit, −, +, and Reset. After zooming, drag left, right, up, or down in normal or fullscreen, in single or camera comparison mode. Only the teacher video moves.'],
+    ['Record and review practice', 'In camera comparison, choose a 3, 5, or 10 second countdown and record a clean split view from the current practice-range start. Practice recordings include the teacher video audio. Microphone and room audio are not recorded.'],
   ]
 
   return (
@@ -133,6 +139,23 @@ function App() {
   const cameraVideoRef = useRef<HTMLVideoElement>(null)
   const cameraStreamRef = useRef<MediaStream | null>(null)
   const cameraRequestRef = useRef(0)
+  const recordingCanvasRef = useRef<HTMLCanvasElement>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const recordingStreamRef = useRef<MediaStream | null>(null)
+  const teacherCaptureStreamRef = useRef<MediaStream | null>(null)
+  const recordingAudioContextRef = useRef<AudioContext | null>(null)
+  const recordingAudioSourceRef = useRef<MediaStreamAudioSourceNode | null>(null)
+  const recordingAudioGainRef = useRef<GainNode | null>(null)
+  const recordingAudioDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null)
+  const recordingFrameRef = useRef<number | null>(null)
+  const recordingTimerRef = useRef<number | null>(null)
+  const recordingChunksRef = useRef<Blob[]>([])
+  const recordingSessionRef = useRef(0)
+  const recordingStartedAtRef = useRef(0)
+  const recordingUrlRef = useRef<string | null>(null)
+  const recordingStatusRef = useRef<RecordingStatus>('idle')
+  const pendingCameraStopRef = useRef(false)
+  const countdownRestoreRef = useRef<{ time: number; wasPlaying: boolean } | null>(null)
   const videoStageRef = useRef<HTMLDivElement>(null)
   const playerRef = useRef<HTMLDivElement>(null)
   const practiceControlsRef = useRef<HTMLDivElement>(null)
@@ -183,6 +206,17 @@ function App() {
   const [cameraStatus, setCameraStatus] = useState<'idle' | 'loading' | 'active' | 'error'>('idle')
   const [cameraMessage, setCameraMessage] = useState('')
   const [mirrorSelfView, setMirrorSelfView] = useState(true)
+  const [countdownSeconds, setCountdownSeconds] = useState<3 | 5 | 10>(5)
+  const [countdownValue, setCountdownValue] = useState<number | null>(null)
+  const [recordingStatus, setRecordingStatus] = useState<RecordingStatus>('idle')
+  const [recordingElapsed, setRecordingElapsed] = useState(0)
+  const [recordingUrl, setRecordingUrl] = useState<string | null>(null)
+  const [reviewOpen, setReviewOpen] = useState(false)
+  const [recordingMimeType, setRecordingMimeType] = useState('')
+  const [recordingError, setRecordingError] = useState('')
+  const [recordingAudioNotice, setRecordingAudioNotice] = useState('')
+  const [recordingHasTeacherAudio, setRecordingHasTeacherAudio] = useState(false)
+  const [reviewSpeed, setReviewSpeed] = useState(1)
   const [, setTeacherViewportRevision] = useState(0)
   const text = (zh: string, en: string) => language === 'zh' ? zh : en
 
@@ -204,6 +238,47 @@ function App() {
     setIsLoopWaiting(false)
   }, [])
 
+  const updateRecordingStatus = useCallback((status: RecordingStatus) => {
+    recordingStatusRef.current = status
+    setRecordingStatus(status)
+  }, [])
+
+  const resetToPracticeIdle = useCallback(() => {
+    cancelPendingLoop()
+    countdownRestoreRef.current = null
+    const video = videoRef.current
+    if (video) {
+      video.pause()
+      video.currentTime = practiceRange.startTime
+    }
+    setCurrentTime(practiceRange.startTime)
+    setIsPlaying(false)
+    setIsLoopWaiting(false)
+    setCountdownValue(null)
+    setRecordingElapsed(0)
+  }, [cancelPendingLoop, practiceRange.startTime])
+
+  const closeReviewToPractice = useCallback(() => {
+    setReviewOpen(false)
+    resetToPracticeIdle()
+    updateRecordingStatus('idle')
+  }, [resetToPracticeIdle, updateRecordingStatus])
+
+  const cleanupRecordingAudio = useCallback(() => {
+    recordingAudioSourceRef.current?.disconnect()
+    recordingAudioGainRef.current?.disconnect()
+    recordingAudioDestinationRef.current?.disconnect()
+    recordingAudioDestinationRef.current?.stream.getTracks().forEach((track) => track.stop())
+    teacherCaptureStreamRef.current?.getTracks().forEach((track) => track.stop())
+    recordingAudioSourceRef.current = null
+    recordingAudioGainRef.current = null
+    recordingAudioDestinationRef.current = null
+    teacherCaptureStreamRef.current = null
+    const context = recordingAudioContextRef.current
+    recordingAudioContextRef.current = null
+    if (context && context.state !== 'closed') void context.close()
+  }, [])
+
   useEffect(() => {
     localStorage.setItem('frametune-language', language)
     document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en'
@@ -215,11 +290,18 @@ function App() {
 
   useEffect(() => () => {
     cancelPendingLoop()
+    recordingSessionRef.current += 1
+    if (recordingTimerRef.current !== null) window.clearInterval(recordingTimerRef.current)
+    if (recordingFrameRef.current !== null) cancelAnimationFrame(recordingFrameRef.current)
+    if (mediaRecorderRef.current?.state !== 'inactive') mediaRecorderRef.current?.stop()
+    recordingStreamRef.current?.getTracks().forEach((track) => track.stop())
+    cleanupRecordingAudio()
+    if (recordingUrlRef.current) URL.revokeObjectURL(recordingUrlRef.current)
     cameraRequestRef.current += 1
     cameraStreamRef.current?.getTracks().forEach((track) => track.stop())
     cameraStreamRef.current = null
     if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
-  }, [cancelPendingLoop])
+  }, [cancelPendingLoop, cleanupRecordingAudio])
 
   useEffect(() => {
     const cameraVideo = cameraVideoRef.current
@@ -255,6 +337,15 @@ function App() {
       document.removeEventListener('mousedown', closeOnUnrelatedClick)
     }
   }, [settingsDrawerOpen])
+
+  useEffect(() => {
+    if (!reviewOpen) return
+    const closeReviewOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeReviewToPractice()
+    }
+    window.addEventListener('keydown', closeReviewOnEscape)
+    return () => window.removeEventListener('keydown', closeReviewOnEscape)
+  }, [closeReviewToPractice, reviewOpen])
 
   useEffect(() => {
     if (!practiceStorageKey) return
@@ -542,13 +633,17 @@ function App() {
   const changeVolume = (event: ChangeEvent<HTMLInputElement>) => {
     const next = Number(event.target.value)
     if (videoRef.current) { videoRef.current.volume = next; if (next > 0) videoRef.current.muted = false }
+    if (recordingAudioGainRef.current) recordingAudioGainRef.current.gain.value = videoRef.current?.muted ? 0 : next
     setVolume(next); setIsMuted(next === 0); localStorage.setItem('adl-volume', String(next))
   }
   const toggleMute = () => {
     if (!videoRef.current) return
-    videoRef.current.muted = !videoRef.current.muted; setIsMuted(videoRef.current.muted)
+    videoRef.current.muted = !videoRef.current.muted
+    if (recordingAudioGainRef.current) recordingAudioGainRef.current.gain.value = videoRef.current.muted ? 0 : videoRef.current.volume
+    setIsMuted(videoRef.current.muted)
   }
-  const stopCamera = useCallback(() => {
+
+  const releaseCamera = useCallback(() => {
     cameraRequestRef.current += 1
     cameraStreamRef.current?.getTracks().forEach((track) => track.stop())
     cameraStreamRef.current = null
@@ -557,6 +652,247 @@ function App() {
     setCameraStatus('idle')
     setCameraMessage('')
   }, [])
+
+  const drawRecordingFrame = useCallback(() => {
+    const canvas = recordingCanvasRef.current
+    const teacher = videoRef.current
+    const learner = cameraVideoRef.current
+    const stage = videoStageRef.current
+    if (!canvas || !teacher?.videoWidth || !teacher.videoHeight || !learner?.videoWidth || !learner.videoHeight || !stage) return
+    const context = canvas.getContext('2d')
+    if (!context) return
+    const panelWidth = RECORDING_WIDTH / 2
+    context.fillStyle = '#050505'
+    context.fillRect(0, 0, RECORDING_WIDTH, RECORDING_HEIGHT)
+
+    const viewportScale = Math.min(panelWidth / stage.clientWidth, RECORDING_HEIGHT / stage.clientHeight)
+    const viewportWidth = stage.clientWidth * viewportScale
+    const viewportHeight = stage.clientHeight * viewportScale
+    const viewportX = (panelWidth - viewportWidth) / 2
+    const viewportY = (RECORDING_HEIGHT - viewportHeight) / 2
+    const fitScale = renderDisplayMode === 'cover'
+      ? Math.max(stage.clientWidth / teacher.videoWidth, stage.clientHeight / teacher.videoHeight)
+      : Math.min(stage.clientWidth / teacher.videoWidth, stage.clientHeight / teacher.videoHeight)
+    const framing = clampTeacherFraming(teacherFraming)
+    const teacherWidth = teacher.videoWidth * fitScale * framing.zoom * viewportScale
+    const teacherHeight = teacher.videoHeight * fitScale * framing.zoom * viewportScale
+    const teacherX = viewportX + viewportWidth / 2 + framing.panX * viewportScale
+    const teacherY = viewportY + viewportHeight / 2 + framing.panY * viewportScale
+    context.save()
+    context.beginPath()
+    context.rect(viewportX, viewportY, viewportWidth, viewportHeight)
+    context.clip()
+    context.translate(teacherX, teacherY)
+    context.scale(isMirrored ? -1 : 1, 1)
+    context.drawImage(teacher, -teacherWidth / 2, -teacherHeight / 2, teacherWidth, teacherHeight)
+    context.restore()
+
+    const learnerScale = Math.min(panelWidth / learner.videoWidth, RECORDING_HEIGHT / learner.videoHeight)
+    const learnerWidth = learner.videoWidth * learnerScale
+    const learnerHeight = learner.videoHeight * learnerScale
+    context.save()
+    context.beginPath()
+    context.rect(panelWidth, 0, panelWidth, RECORDING_HEIGHT)
+    context.clip()
+    context.translate(panelWidth + panelWidth / 2, RECORDING_HEIGHT / 2)
+    context.scale(mirrorSelfView ? -1 : 1, 1)
+    context.drawImage(learner, -learnerWidth / 2, -learnerHeight / 2, learnerWidth, learnerHeight)
+    context.restore()
+  }, [isMirrored, mirrorSelfView, renderDisplayMode, teacherFraming])
+
+  const stopRecording = useCallback(() => {
+    recordingSessionRef.current += 1
+    setCountdownValue(null)
+    if (recordingTimerRef.current !== null) window.clearInterval(recordingTimerRef.current)
+    recordingTimerRef.current = null
+    if (recordingFrameRef.current !== null) cancelAnimationFrame(recordingFrameRef.current)
+    recordingFrameRef.current = null
+    const recorder = mediaRecorderRef.current
+    if (recorder && recorder.state !== 'inactive') {
+      updateRecordingStatus('processing')
+      recorder.stop()
+    }
+    resetToPracticeIdle()
+  }, [resetToPracticeIdle, updateRecordingStatus])
+
+  const cancelCountdown = useCallback(() => {
+    if (recordingStatusRef.current !== 'countdown') return
+    recordingSessionRef.current += 1
+    setCountdownValue(null)
+    updateRecordingStatus('idle')
+    const restore = countdownRestoreRef.current
+    const video = videoRef.current
+    countdownRestoreRef.current = null
+    if (restore && video) {
+      video.currentTime = restore.time
+      setCurrentTime(restore.time)
+      if (restore.wasPlaying) void video.play().catch(() => undefined)
+    }
+  }, [updateRecordingStatus])
+
+  const stopCamera = useCallback(() => {
+    if (recordingStatusRef.current === 'countdown') cancelCountdown()
+    if (recordingStatusRef.current === 'recording' || recordingStatusRef.current === 'processing') {
+      pendingCameraStopRef.current = true
+      stopRecording()
+      return
+    }
+    releaseCamera()
+  }, [cancelCountdown, releaseCamera, stopRecording])
+
+  const beginMediaRecording = useCallback(async () => {
+    const canvas = recordingCanvasRef.current
+    const teacher = videoRef.current
+    const camera = cameraStreamRef.current
+    if (!canvas || !teacher || !camera || camera.getVideoTracks().every((track) => track.readyState !== 'live')) throw new Error('camera-unavailable')
+    canvas.width = RECORDING_WIDTH
+    canvas.height = RECORDING_HEIGHT
+    drawRecordingFrame()
+    cleanupRecordingAudio()
+    setRecordingAudioNotice('')
+    setRecordingHasTeacherAudio(false)
+    const canvasStream = canvas.captureStream(RECORDING_FPS)
+    let recordingAudioTracks: MediaStreamTrack[] = []
+    try {
+      const capturableTeacher = teacher as HTMLVideoElement & { captureStream?: () => MediaStream; mozCaptureStream?: () => MediaStream }
+      const captureTeacherStream = capturableTeacher.captureStream?.() ?? capturableTeacher.mozCaptureStream?.()
+      if (!captureTeacherStream?.getAudioTracks().length || typeof AudioContext === 'undefined') throw new Error('teacher-audio-unavailable')
+      const audioContext = new AudioContext()
+      teacherCaptureStreamRef.current = captureTeacherStream
+      recordingAudioContextRef.current = audioContext
+      await audioContext.resume()
+      if (audioContext.state !== 'running') throw new Error('teacher-audio-context-suspended')
+      const audioSource = audioContext.createMediaStreamSource(captureTeacherStream)
+      const audioGain = audioContext.createGain()
+      const audioDestination = audioContext.createMediaStreamDestination()
+      audioGain.gain.value = teacher.muted ? 0 : teacher.volume
+      audioSource.connect(audioGain)
+      audioGain.connect(audioDestination)
+      recordingAudioSourceRef.current = audioSource
+      recordingAudioGainRef.current = audioGain
+      recordingAudioDestinationRef.current = audioDestination
+      recordingAudioTracks = audioDestination.stream.getAudioTracks()
+      setRecordingHasTeacherAudio(true)
+    } catch {
+      cleanupRecordingAudio()
+      setRecordingAudioNotice(text('当前浏览器无法录制老师视频声音，本次录像将仅包含画面。', 'This browser cannot capture the teacher video audio. This recording will be video-only.'))
+    }
+    const stream = new MediaStream([...canvasStream.getVideoTracks(), ...recordingAudioTracks])
+    recordingStreamRef.current = stream
+    const mimeType = [
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm',
+    ].find((type) => MediaRecorder.isTypeSupported(type)) ?? ''
+    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
+    mediaRecorderRef.current = recorder
+    recordingChunksRef.current = []
+    setRecordingMimeType(mimeType || recorder.mimeType || 'video/webm')
+    recorder.ondataavailable = (event) => { if (event.data.size) recordingChunksRef.current.push(event.data) }
+    recorder.onerror = () => {
+      setRecordingError(text('录制过程中发生错误，请重试。', 'Recording failed. Please try again.'))
+      updateRecordingStatus('error')
+      if (recorder.state !== 'inactive') recorder.stop()
+      else {
+        recordingStreamRef.current?.getTracks().forEach((track) => track.stop())
+        recordingStreamRef.current = null
+        cleanupRecordingAudio()
+      }
+    }
+    recorder.onstop = () => {
+      resetToPracticeIdle()
+      if (recordingTimerRef.current !== null) window.clearInterval(recordingTimerRef.current)
+      recordingTimerRef.current = null
+      recordingStreamRef.current?.getTracks().forEach((track) => track.stop())
+      recordingStreamRef.current = null
+      cleanupRecordingAudio()
+      mediaRecorderRef.current = null
+      const type = recorder.mimeType || mimeType || 'video/webm'
+      const blob = new Blob(recordingChunksRef.current, { type })
+      recordingChunksRef.current = []
+      if (blob.size) {
+        if (recordingUrlRef.current) URL.revokeObjectURL(recordingUrlRef.current)
+        const url = URL.createObjectURL(blob)
+        recordingUrlRef.current = url
+        setRecordingUrl(url)
+        setReviewOpen(true)
+        setReviewSpeed(1)
+        updateRecordingStatus('ready')
+      } else {
+        setRecordingError(text('没有生成可回看的录像，请重试。', 'No reviewable recording was created. Please try again.'))
+        updateRecordingStatus('error')
+      }
+      if (pendingCameraStopRef.current) {
+        pendingCameraStopRef.current = false
+        releaseCamera()
+      }
+    }
+    const render = () => {
+      if (recorder.state === 'inactive') return
+      drawRecordingFrame()
+      recordingFrameRef.current = requestAnimationFrame(render)
+    }
+    recorder.start(1000)
+    recordingStartedAtRef.current = performance.now()
+    setRecordingElapsed(0)
+    updateRecordingStatus('recording')
+    render()
+    recordingTimerRef.current = window.setInterval(() => setRecordingElapsed((performance.now() - recordingStartedAtRef.current) / 1000), 200)
+    await teacher.play()
+  }, [cleanupRecordingAudio, drawRecordingFrame, language, releaseCamera, resetToPracticeIdle, updateRecordingStatus])
+
+  const startRecordingCountdown = useCallback(async () => {
+    const video = videoRef.current
+    const camera = cameraStreamRef.current
+    if (!videoUrl || !video || !compareMode || cameraStatus !== 'active' || !camera || !window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) {
+      setRecordingError(text('请先载入视频并开启可用的摄像头对比。', 'Load a video and start camera comparison before recording.'))
+      updateRecordingStatus('error')
+      return
+    }
+    setRecordingError('')
+    cancelPendingLoop()
+    countdownRestoreRef.current = { time: video.currentTime, wasPlaying: !video.paused }
+    video.pause()
+    const session = ++recordingSessionRef.current
+    updateRecordingStatus('countdown')
+    for (let value = countdownSeconds; value > 0; value -= 1) {
+      if (recordingSessionRef.current !== session) return
+      setCountdownValue(value)
+      await new Promise((resolve) => window.setTimeout(resolve, 1000))
+    }
+    if (recordingSessionRef.current !== session) return
+    setCountdownValue(null)
+    video.currentTime = practiceRange.startTime
+    setCurrentTime(practiceRange.startTime)
+    if (Math.abs(video.currentTime - practiceRange.startTime) > 0.01 || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+      await new Promise<void>((resolve) => {
+        const finish = () => { video.removeEventListener('seeked', finish); resolve() }
+        video.addEventListener('seeked', finish, { once: true })
+        window.setTimeout(finish, 1500)
+      })
+    }
+    if (recordingSessionRef.current !== session) return
+    try {
+      await beginMediaRecording()
+    } catch {
+      recordingStreamRef.current?.getTracks().forEach((track) => track.stop())
+      recordingStreamRef.current = null
+      cleanupRecordingAudio()
+      setRecordingError(text('无法开始本地录像。请检查浏览器支持和摄像头状态。', 'Could not start local recording. Check browser support and camera status.'))
+      updateRecordingStatus('error')
+    }
+  }, [beginMediaRecording, cameraStatus, cancelPendingLoop, cleanupRecordingAudio, compareMode, countdownSeconds, language, practiceRange.startTime, updateRecordingStatus, videoUrl])
+
+  const deleteRecording = () => {
+    if (recordingUrlRef.current) URL.revokeObjectURL(recordingUrlRef.current)
+    recordingUrlRef.current = null
+    setRecordingUrl(null)
+    setReviewOpen(false)
+    setRecordingElapsed(0)
+    setRecordingError('')
+    resetToPracticeIdle()
+    updateRecordingStatus('idle')
+  }
   const startCamera = useCallback(async () => {
     const requestId = cameraRequestRef.current + 1
     cameraRequestRef.current = requestId
@@ -576,6 +912,12 @@ function App() {
       }
       cameraStreamRef.current?.getTracks().forEach((track) => track.stop())
       cameraStreamRef.current = stream
+      stream.getVideoTracks().forEach((track) => track.addEventListener('ended', () => {
+        if (recordingStatusRef.current === 'countdown') cancelCountdown()
+        if (recordingStatusRef.current === 'recording') stopRecording()
+        setCameraStatus('error')
+        setCameraMessage(text('摄像头已停止。', 'Camera stopped.'))
+      }, { once: true }))
       setCameraStatus('active')
       setCameraMessage('')
     } catch (cameraError) {
@@ -588,7 +930,7 @@ function App() {
           ? text('未检测到可用摄像头。', 'No available camera was detected.')
           : text('无法启动摄像头，请检查设备是否被其他程序占用。', 'The camera could not start. Check whether another app is using it.'))
     }
-  }, [language])
+  }, [cancelCountdown, language, stopRecording])
   const toggleCompareMode = useCallback(() => {
     if (compareMode) stopCamera()
     else void startCamera()
@@ -652,10 +994,16 @@ function App() {
                 <span className="panel-label">{text('我的画面', 'My camera')}</span>
                 {cameraStatus === 'active' && <button type="button" title={text('只改变自己的预览方向', 'Changes only your self-view')} className={`self-mirror-button ${mirrorSelfView ? 'active' : ''}`} onClick={() => setMirrorSelfView((value) => !value)}>{text('镜像自己', 'Mirror self-view')}</button>}
               </div>}
+              {recordingStatus === 'countdown' && countdownValue !== null && <div className="recording-countdown" role="status" aria-live="assertive"><strong>{countdownValue}</strong><span>{text('准备开始', 'Get ready')}</span><button type="button" onClick={cancelCountdown}>{text('取消', 'Cancel')}</button></div>}
+              {recordingStatus === 'recording' && <div className="recording-live-status" role="status"><span aria-hidden="true" />{text('录制中', 'Recording')} {formatTime(recordingElapsed)}</div>}
             </div>
+            <canvas ref={recordingCanvasRef} className="recording-canvas" aria-hidden="true" />
             <div className="video-quick-controls" aria-label={text('常用画面控制', 'Quick video controls')}>
               <button type="button" title={text('水平翻转教师视频', 'Mirror the teacher video')} className={isMirrored ? 'active' : ''} onClick={toggleMirror}>{text('镜像', 'Mirror')}</button>
               <button type="button" title={text('同时显示本机摄像头，不录制或上传', 'Show your local camera without recording or uploading')} className={compareMode ? 'active' : ''} onClick={toggleCompareMode}>{compareMode ? text('关闭摄像头', 'Turn camera off') : text('摄像头对比', 'Compare with camera')}</button>
+              {compareMode && cameraStatus === 'active' && recordingStatus !== 'recording' && recordingStatus !== 'processing' && <button type="button" className="record-button" disabled={recordingStatus === 'countdown'} onClick={() => void startRecordingCountdown()}>{recordingStatus === 'countdown' ? text('倒计时中', 'Counting down') : text('开始录制', 'Record')}</button>}
+              {recordingStatus === 'recording' && <button type="button" className="stop-record-button" onClick={stopRecording}>{text('停止录制', 'Stop')}</button>}
+              {recordingUrl && !reviewOpen && <button type="button" onClick={() => setReviewOpen(true)}>{text('查看录像', 'Review recording')}</button>}
               <button type="button" onClick={() => setSettingsDrawerOpen(true)}>{text('练习设置', 'Practice settings')}</button>
               <button type="button" onClick={() => void toggleFullscreen()}>{text('全屏', 'Fullscreen')}</button>
             </div>
@@ -668,6 +1016,10 @@ function App() {
               <button type="button" disabled={safeSegmentIndex === learningSegments.length - 1} onClick={() => changeSegment(safeSegmentIndex + 1)}>{text('下一段', 'Next')}</button>
               <button type="button" className={playbackMode === 'loop' ? 'active' : ''} onClick={() => changePlaybackMode(playbackMode === 'loop' ? 'continuous' : 'loop')}>{playbackMode === 'loop' ? text('循环', 'Loop') : text('连续', 'Continuous')}</button>
               <button type="button" className={compareMode ? 'active' : ''} onClick={toggleCompareMode}>{compareMode ? text('关闭摄像头', 'Camera off') : text('摄像头对比', 'Camera compare')}</button>
+              {cameraStatus === 'active' && recordingStatus !== 'recording' && recordingStatus !== 'processing' && <button type="button" disabled={recordingStatus === 'countdown'} onClick={() => void startRecordingCountdown()}>{recordingStatus === 'countdown' ? text('倒计时中', 'Countdown') : text('开始录制', 'Record')}</button>}
+              {recordingStatus === 'recording' && <button type="button" className="stop-record-button" onClick={stopRecording}>{text('停止录制', 'Stop recording')}</button>}
+              {recordingStatus === 'countdown' && <button type="button" onClick={cancelCountdown}>{text('取消倒计时', 'Cancel countdown')}</button>}
+              {recordingUrl && !reviewOpen && <button type="button" onClick={() => setReviewOpen(true)}>{text('查看录像', 'Review recording')}</button>}
               {sidebarExpanded && <div className="sidebar-expanded-controls">
                 {learningSegments.length > 0 && <div className="fullscreen-segment-selector" aria-label={text('直接选择学习段', 'Choose a practice section')}>
                   {learningSegments.map((segment, index) => <button type="button" key={segment.segmentIndex} className={safeSegmentIndex === index ? 'active' : ''} onClick={() => changeSegment(index)}>{segment.segmentIndex}</button>)}
@@ -720,6 +1072,20 @@ function App() {
                 <button type="button" onClick={toggleMute}>{isMuted || volume === 0 ? text('取消静音', 'Unmute') : text('静音', 'Mute')}</button>
               </div><input aria-label={text('音量', 'Volume')} type="range" min="0" max="1" step="0.05" value={volume} onChange={changeVolume} /></section>
 
+              <section className="drawer-section recording-setup"><h3>{text('本地练习录像', 'Local practice recording')}</h3>
+                <p>{text('练习录像包含老师视频的声音，不会录制麦克风或环境声音。录像不会上传。', 'Practice recordings include the teacher video audio. Microphone and room audio are not recorded. Recordings are not uploaded.')}</p>
+                {recordingAudioNotice && <span className="recording-audio-notice" role="status">{recordingAudioNotice}</span>}
+                <label>{text('开始前倒计时', 'Countdown before recording')}<select value={countdownSeconds} onChange={(event) => setCountdownSeconds(Number(event.target.value) as 3 | 5 | 10)} disabled={recordingStatus === 'countdown' || recordingStatus === 'recording' || recordingStatus === 'processing'}><option value="3">3 {text('秒', 'seconds')}</option><option value="5">5 {text('秒', 'seconds')}</option><option value="10">10 {text('秒', 'seconds')}</option></select></label>
+                <div className="recording-actions">
+                  {recordingStatus !== 'recording' && <button type="button" disabled={!videoUrl || !compareMode || cameraStatus !== 'active' || recordingStatus === 'countdown' || recordingStatus === 'processing'} onClick={() => void startRecordingCountdown()}>{recordingStatus === 'processing' ? text('正在生成回看…', 'Preparing review…') : text('开始录制', 'Start recording')}</button>}
+                  {recordingStatus === 'recording' && <button type="button" className="stop-record-button" onClick={stopRecording}>{text('停止录制', 'Stop recording')}</button>}
+                  {recordingStatus === 'countdown' && <button type="button" onClick={cancelCountdown}>{text('取消倒计时', 'Cancel countdown')}</button>}
+                  {recordingUrl && !reviewOpen && <button type="button" onClick={() => setReviewOpen(true)}>{text('查看录像', 'Review recording')}</button>}
+                </div>
+                {recordingStatus === 'recording' && <strong className="recording-time">● {text('录制中', 'Recording')} {formatTime(recordingElapsed)}</strong>}
+                {recordingError && <span className="field-error">{recordingError}</span>}
+              </section>
+
               <section className={`setup-panel drawer-setup ${setupExpanded ? 'open' : ''}`}>
                 <button type="button" className="setup-toggle" onClick={() => setSetupExpanded((value) => !value)}>{formalStartTime === null ? text('设置节拍与分段', 'Set beat and sections') : text('重新设置分段', 'Reset section setup')} <span>{setupExpanded ? text('收起', 'Collapse') : text('展开', 'Expand')}</span></button>
                 {setupExpanded && <div className="setup-grid">
@@ -730,6 +1096,16 @@ function App() {
                 </div>}
               </section>
             </aside>
+          </div>}
+          {recordingUrl && reviewOpen && <div className="recording-review-backdrop" role="presentation">
+            <section className="recording-review" role="dialog" aria-modal="true" aria-labelledby="recording-review-title">
+              <header><div><p className="panel-kicker">LOCAL REVIEW</p><h2 id="recording-review-title">{text('练习录像回看', 'Practice recording review')}</h2></div><button type="button" className="review-close" aria-label={text('关闭回放', 'Close Review')} onClick={closeReviewToPractice}>×</button></header>
+              <video src={recordingUrl} controls loop playsInline onLoadedMetadata={(event) => { event.currentTarget.playbackRate = reviewSpeed }} />
+              <div className="review-speed" aria-label={text('回看速度', 'Review speed')}>{([0.5, 0.75, 1] as const).map((value) => <button type="button" key={value} className={reviewSpeed === value ? 'active' : ''} onClick={(event) => { setReviewSpeed(value); const reviewVideo = event.currentTarget.closest('.recording-review')?.querySelector('video'); if (reviewVideo) reviewVideo.playbackRate = value }}>{value}×</button>)}</div>
+              <div className="review-actions"><button type="button" className="back-to-practice" onClick={closeReviewToPractice}>{text('返回练习', 'Back to Practice')}</button><a className="button-link" href={recordingUrl} download={`frametune-practice-${new Date().toISOString().replace(/[:.]/g, '-')}.webm`}>{text('下载 WebM', 'Download WebM')}</a><button type="button" onClick={deleteRecording}>{text('删除录像', 'Delete recording')}</button><button type="button" disabled={cameraStatus !== 'active'} onClick={() => { closeReviewToPractice(); setRecordingError(''); void startRecordingCountdown() }}>{text('再录一次', 'Record another')}</button></div>
+              <p>{text(`本地生成 · ${recordingHasTeacherAudio ? '包含老师视频声音' : '仅画面'} · ${recordingMimeType || 'video/webm'}`, `Created locally · ${recordingHasTeacherAudio ? 'teacher video audio included' : 'video only'} · ${recordingMimeType || 'video/webm'}`)}</p>
+              {recordingAudioNotice && <p className="recording-audio-notice" role="status">{recordingAudioNotice}</p>}
+            </section>
           </div>}
         </>}
         {error && <p className="error-message" role="alert">{error}</p>}
