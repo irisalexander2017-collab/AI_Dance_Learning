@@ -47,6 +47,14 @@ Record development prompts here when needed.
 - Test result: TypeScript compilation and Vite production build passed. Static connection checks confirmed one video/ref, three playback buttons using the shared toggle, active object-fit/object-position bindings, pointer capture/release, reset wiring, 2000 ms loop, and continuous branch.
 - Manual verification: Both the managed browser and local Chrome control could not reach the Windows development listener; browser policy also blocked a local static test page. Real horizontal/portrait playback, drag visuals, loop/continuous playback, fullscreen restoration, and console checks therefore require user verification and are not reported as passed.
 
+## 2026-07-05 — MVP-07 bilingual guide and public test deployment
+
+- Goal: Audit the current product, complete Chinese/English UI coverage, update the real workflow guide, confirm privacy and frontend-only deployment feasibility, and prepare a GitHub Pages public test release.
+- Scope delivered: App-wide lightweight language selection; bilingual guide and all practice/fullscreen/camera/framing states; local-only privacy wording; Beta indication; Pages base-path handling and deployment workflow; README and project-log updates.
+- Restrictions observed: No redesign, recording, movement recognition, AI analysis, login, automatic BPM detection, backend feature, or unrelated player rewrite.
+- Validation: TypeScript and production build passed; built JS/CSS and brand image paths use the repository subpath. Git diff whitespace and sensitive-file checks are part of release validation.
+- Manual verification: Real camera hardware, browser permission behavior, real portrait/landscape playback, and fullscreen media interactions remain manual where local browser automation cannot inject test files or grant hardware access.
+
 ## Template
 
 - Date:

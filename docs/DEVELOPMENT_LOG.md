@@ -61,3 +61,13 @@
 - Added temporary fullscreen display/pan state: portrait enters with contain, landscape retains its selected mode, and exiting restores normal-page mode/pan automatically.
 - Preserved learning-segment generation, manual BPM/beat setup, four practice ranges, fixed two-second loop, continuous next-segment behavior, compact layout, and fullscreen sidebar.
 - Production build passed. The managed browser could not access the local listener and blocked the local static test page, so real-media normal-page and fullscreen verification remains manual.
+
+## 2026-07-05 — MVP-07 release-readiness pass
+
+- Completed the FrameTune / 帧琢 bilingual landing page, practice workspace, settings drawer, fullscreen sidebar, status messages, errors, accessibility labels, and help text without adding a localization dependency.
+- Expanded the bilingual How It Works guide to cover local video use, manual beat setup, practice ranges, playback controls, camera privacy, camera shutdown, and teacher Fit/zoom/reset/drag behavior.
+- Added camera comparison with a local mirrored self-view and clean MediaStream shutdown; camera frames are not uploaded or recorded.
+- Added independent single-view and camera-split teacher framing with 1.00×–3.00× zoom and bounded two-axis dragging in normal and fullscreen layouts.
+- Confirmed the user-facing application is frontend-only; the Phase 0 FastAPI health endpoint is not used by current frontend features.
+- Added GitHub Pages deployment for the `AI_Dance_Learning` repository subpath and verified the production asset paths locally.
+- TypeScript and Vite production build passed. Real camera hardware, fullscreen, and media interaction regression tests remain manual where browser automation is restricted.

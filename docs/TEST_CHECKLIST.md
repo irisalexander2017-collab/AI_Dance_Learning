@@ -125,3 +125,16 @@
 - [ ] Fixed two-second loop and continuous next-segment behavior with real playback — requires user verification.
 - [ ] Fullscreen sidebar controls and portrait contain/exit restoration — requires user manual verification.
 - [ ] Browser console during real video/fullscreen use — requires user manual verification.
+
+## MVP-07 bilingual public test release
+
+- [x] Chinese and English modes cover the landing page, How It Works, upload state, practice controls, settings, setup, fullscreen controls, camera states, errors, and accessibility labels.
+- [x] Selected language persists in localStorage and updates the document language.
+- [x] How It Works documents video privacy, beat setup, ranges, playback, camera comparison, camera privacy/shutdown, and teacher zoom/pan.
+- [x] Teacher Fit, zoom out, zoom value, zoom in, Reset, and drag entry points exist in normal settings and the fullscreen sidebar.
+- [x] Camera comparison has visible on/off entry points in normal and fullscreen controls; learner mirror is independent of teacher mirror.
+- [x] Production build uses `/AI_Dance_Learning/` and the brand artwork resolves through Vite `BASE_URL`.
+- [x] TypeScript compilation, production build, and Git diff whitespace checks pass.
+- [ ] Real portrait and landscape video regression with both languages — manual verification required.
+- [ ] Real camera permission, mirrored self-view, repeated open/close, and camera-light shutdown — manual verification required.
+- [ ] Fullscreen single/split zoom and pan, segment loop, continuous playback, speed, and mirror regression — manual verification required.

@@ -1,13 +1,10 @@
-# AI Dance Learning 项目说明（Codex 开发版）
+# 帧琢 FrameTune 项目说明（Codex 开发版）
 
 ## 1. 项目名称
 
-**AI Dance Learning**
+**帧琢 FrameTune**（代码仓库：`AI_Dance_Learning`）
 
-建议产品名称：
-- AI Dance Count
-- 8-Count Dance Breaker
-- AI 舞蹈数拍学习器
+当前公开测试版的用户功能全部在浏览器中运行。用户选择的舞蹈视频和学习者摄像头画面保留在本机；当前版本不上传或录制摄像头内容。
 
 ## 2. 项目目标
 

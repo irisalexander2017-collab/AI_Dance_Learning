@@ -83,6 +83,12 @@ Record approved scope changes here.
   - 普通页面与全屏使用独立的临时显示模式和拖动位置；竖屏进入全屏先 contain，退出不会污染普通页面状态。
   - 保留固定 2 秒循环、连续下一段、学习范围、精简布局和全屏侧边栏。
 - Status: 播放控制、竖屏显示状态、拖动边界和重置的数据流已修复；生产构建通过。普通页面真实媒体及全屏效果仍需用户本地验证。
+
+## 2026-07-05 — Camera comparison and teacher framing
+
+- Request: Add a local learner-camera comparison view plus independent teacher Fit, zoom, reset, and bounded two-axis dragging in single, split, normal, and fullscreen modes.
+- Status: Implemented. Camera streams are local, muted, not recorded or uploaded, and their tracks are stopped when comparison closes or the app leaves the workspace. Teacher framing uses separate single/split state and does not transform the learner camera.
+- Verification: TypeScript and production build pass. Real hardware, camera-light shutdown, and fullscreen media behavior require user manual validation.
 - Classification: Phase 2A.1 引入的 Blocking Regression，不是新功能。
 
 - Date:
