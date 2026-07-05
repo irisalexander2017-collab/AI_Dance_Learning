@@ -30,6 +30,14 @@ h1 { margin: 0; font-size: clamp(2rem, 4vw, 3.4rem); line-height: 1; letter-spac
 .upload-panel input, .replace-button input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .player-frame { position: relative; overflow: hidden; border-radius: 14px; background: #050505; box-shadow: 0 12px 32px rgba(0,0,0,.45); }
 .video-stage { height: min(68vh, 760px); display: grid; place-items: center; overflow: hidden; background: #050505; }
+.teacher-video-panel { position: relative; width: 100%; height: 100%; min-width: 0; min-height: 0; display: grid; place-items: center; overflow: hidden; background: #050505; }
+.video-stage.compare-mode { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); place-items: stretch; gap: 2px; background: #26231d; }
+.camera-panel { position: relative; min-width: 0; min-height: 0; display: grid; place-items: center; overflow: hidden; background: #080907; }
+.camera-video { width: 100%; height: 100%; min-width: 0; min-height: 0; background: #080907; }
+.panel-label { position: absolute; top: 12px; left: 12px; z-index: 1; padding: 5px 9px; border: 1px solid rgba(225,194,123,.28); border-radius: 99px; color: #ede4d2; background: rgba(8,8,7,.68); backdrop-filter: blur(7px); font-size: .68rem; letter-spacing: .06em; pointer-events: none; }
+.self-mirror-button { position: absolute; top: 10px; right: 10px; z-index: 2; min-height: 32px; padding: 5px 9px; border-color: rgba(225,194,123,.32); background: rgba(16,15,12,.76); font-size: .7rem; }
+.player-frame:not(:fullscreen) .self-mirror-button { top: 58px; }
+.camera-state { max-width: 340px; display: grid; justify-items: center; gap: 8px; padding: 28px; color: #aaa497; text-align: center; }.camera-state-icon { width: 46px; height: 46px; display: grid; place-items: center; border: 1px solid #625845; border-radius: 50%; color: #d6b873; font-size: 1.35rem; }.camera-state strong { color: #e1d8c7; }.camera-state p { margin: 0; color: #a89f90; font-size: .78rem; line-height: 1.55; }.camera-state.error .camera-state-icon { border-color: #8e4c4c; color: #ed8b8b; }
 video { display: block; min-width: 0; min-height: 0; width: 100%; height: 100%; object-position: center; background: #050505; transform: scaleX(1); }
 video.contain { object-fit: contain; } video.cover { object-fit: cover; } video.mirrored { transform: scaleX(-1); }
 .draggable-stage, .draggable-video { cursor: grab; touch-action: none; user-select: none; }.draggable-stage:active, .draggable-video:active { cursor: grabbing; }
@@ -71,6 +79,7 @@ video.contain { object-fit: contain; } video.cover { object-fit: cover; } video.
 .player-frame:fullscreen { position: relative; inset: 0; width: 100vw; height: 100vh; display: grid; grid-template-rows: minmax(0, 1fr) auto auto; border-radius: 0; background: #000; box-shadow: none; }
 .player-frame:fullscreen .video-quick-controls { display: none; }
 .player-frame:fullscreen .video-stage { width: 100%; height: 100%; min-height: 0; }.player-frame:fullscreen video { width: 100%; height: 100%; max-height: none; }
+.player-frame:fullscreen .video-stage.compare-mode { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
 .player-frame:fullscreen .timeline-row { z-index: 3; padding: 10px 18px; background: rgba(8,8,8,.92); }.player-frame:fullscreen .fullscreen-status { z-index: 3; display: block; padding: 5px 18px 10px; color: #cfc7b8; background: rgba(8,8,8,.92); text-align: center; font-size: .82rem; }
 .player-frame:fullscreen .fullscreen-sidebar { position: absolute; top: 50%; z-index: 5; display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid rgba(224,189,105,.55); border-radius: 13px; background: rgba(20,18,14,.9); backdrop-filter: blur(10px); transform: translateY(-50%); max-height: 88vh; overflow-y: auto; }
 .fullscreen-sidebar.left { left: 12px; }.fullscreen-sidebar.right { right: 12px; }.fullscreen-sidebar.collapsed { width: 82px; }.fullscreen-sidebar.expanded { width: 210px; }
@@ -78,6 +87,7 @@ video.contain { object-fit: contain; } video.cover { object-fit: cover; } video.
 .fullscreen-segment-selector { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; max-height: 132px; overflow-y: auto; }.fullscreen-segment-selector button { min-width: 0; }
 .sidebar-range-buttons { display: grid; gap: 5px; }.sidebar-speed-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
 @media (max-width: 1100px) { .setup-grid { grid-template-columns: 1fr; }.practice-controls { grid-template-columns: repeat(5, 1fr); } }
+@media (max-width: 720px) { .player-frame:not(:fullscreen) .video-stage.compare-mode { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }.panel-label { top: 8px; left: 8px; }.self-mirror-button { top: 6px; right: 6px; } }
 
 /* FrameTune landing page */
 .landing-shell { position: relative; min-height: 100vh; overflow: hidden; color: #f4efe4; background: #11110f; isolation: isolate; }

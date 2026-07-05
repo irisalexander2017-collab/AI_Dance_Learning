@@ -129,6 +129,9 @@ function LandingPage({ onStart }: { onStart: () => void }) {
 
 function App() {
   const videoRef = useRef<HTMLVideoElement>(null)
+  const cameraVideoRef = useRef<HTMLVideoElement>(null)
+  const cameraStreamRef = useRef<MediaStream | null>(null)
+  const cameraRequestRef = useRef(0)
   const videoStageRef = useRef<HTMLDivElement>(null)
   const playerRef = useRef<HTMLDivElement>(null)
   const practiceControlsRef = useRef<HTMLDivElement>(null)
@@ -173,9 +176,13 @@ function App() {
   const [rangeMode, setRangeMode] = useState<PracticeRangeMode>('current')
   const [playbackMode, setPlaybackMode] = useState<PlaybackMode>('loop')
   const [isLoopWaiting, setIsLoopWaiting] = useState(false)
+  const [compareMode, setCompareMode] = useState(false)
+  const [cameraStatus, setCameraStatus] = useState<'idle' | 'loading' | 'active' | 'error'>('idle')
+  const [cameraMessage, setCameraMessage] = useState('')
+  const [mirrorSelfView, setMirrorSelfView] = useState(true)
 
-  const renderDisplayMode: DisplayMode = isFullscreen && orientation === 'portrait' ? 'contain' : displayMode
-  const canDragPortrait = orientation === 'portrait' && displayMode === 'cover' && !isFullscreen
+  const renderDisplayMode: DisplayMode = compareMode || (isFullscreen && orientation === 'portrait') ? 'contain' : displayMode
+  const canDragPortrait = orientation === 'portrait' && displayMode === 'cover' && !isFullscreen && !compareMode
   const learningSegments = useMemo(() => (
     firstBeatTime === null || formalStartTime === null || !duration
       ? [] : buildLearningSegments(duration, formalStartTime, firstBeatTime, bpm)
@@ -193,8 +200,19 @@ function App() {
 
   useEffect(() => () => {
     cancelPendingLoop()
+    cameraRequestRef.current += 1
+    cameraStreamRef.current?.getTracks().forEach((track) => track.stop())
+    cameraStreamRef.current = null
     if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
   }, [cancelPendingLoop])
+
+  useEffect(() => {
+    const cameraVideo = cameraVideoRef.current
+    const stream = cameraStreamRef.current
+    if (!cameraVideo || !stream || cameraStatus !== 'active') return
+    cameraVideo.srcObject = stream
+    void cameraVideo.play().catch(() => setCameraMessage('摄像头已连接，但画面无法自动播放。'))
+  }, [cameraStatus, compareMode])
 
   useEffect(() => {
     const handleFullscreenChange = () => setIsFullscreen(document.fullscreenElement === playerRef.current)
@@ -479,6 +497,51 @@ function App() {
     if (!videoRef.current) return
     videoRef.current.muted = !videoRef.current.muted; setIsMuted(videoRef.current.muted)
   }
+  const stopCamera = useCallback(() => {
+    cameraRequestRef.current += 1
+    cameraStreamRef.current?.getTracks().forEach((track) => track.stop())
+    cameraStreamRef.current = null
+    if (cameraVideoRef.current) cameraVideoRef.current.srcObject = null
+    setCompareMode(false)
+    setCameraStatus('idle')
+    setCameraMessage('')
+  }, [])
+  const startCamera = useCallback(async () => {
+    const requestId = cameraRequestRef.current + 1
+    cameraRequestRef.current = requestId
+    setCompareMode(true)
+    setCameraStatus('loading')
+    setCameraMessage('正在启动摄像头…')
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraStatus('error')
+      setCameraMessage('当前浏览器不支持摄像头访问。')
+      return
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
+      if (cameraRequestRef.current !== requestId) {
+        stream.getTracks().forEach((track) => track.stop())
+        return
+      }
+      cameraStreamRef.current?.getTracks().forEach((track) => track.stop())
+      cameraStreamRef.current = stream
+      setCameraStatus('active')
+      setCameraMessage('')
+    } catch (cameraError) {
+      if (cameraRequestRef.current !== requestId) return
+      const name = cameraError instanceof DOMException ? cameraError.name : ''
+      setCameraStatus('error')
+      setCameraMessage(name === 'NotAllowedError' || name === 'SecurityError'
+        ? '摄像头访问被拒绝。请在浏览器设置中允许摄像头权限。'
+        : name === 'NotFoundError' || name === 'DevicesNotFoundError'
+          ? '未检测到可用摄像头。'
+          : '无法启动摄像头，请检查设备是否被其他程序占用。')
+    }
+  }, [])
+  const toggleCompareMode = useCallback(() => {
+    if (compareMode) stopCamera()
+    else void startCamera()
+  }, [compareMode, startCamera, stopCamera])
   const setSide = (side: SidebarSide) => { setSidebarSide(side); localStorage.setItem('adl-fullscreen-sidebar-side', side) }
   const resetPicture = () => {
     setDisplayMode('contain')
@@ -500,27 +563,37 @@ function App() {
   return (
     <main className="app-shell">
       <header className="app-header">
-        <button type="button" className="workspace-brand" onClick={() => setShowLanding(true)} aria-label="返回帧琢首页"><strong>帧琢</strong><span>FrameTune</span></button>
+        <button type="button" className="workspace-brand" onClick={() => { stopCamera(); setShowLanding(true) }} aria-label="返回帧琢首页"><strong>帧琢</strong><span>FrameTune</span></button>
         <p className="workspace-tagline">逐帧精练，雕琢姿态</p>
       </header>
       <section className="workspace">
         {!videoUrl ? (
           <label className="upload-panel"><span className="upload-icon">＋</span><strong>选择舞蹈视频</strong><span>MP4、MOV 或 WebM</span><input type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" onChange={handleFileChange} /></label>
         ) : <>
-          <div ref={playerRef} className={`player-frame ${orientation}`}>
-            <div ref={videoStageRef} className={`video-stage${canDragPortrait ? ' draggable-stage' : ''}`}
-              onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerEnd} onPointerCancel={handlePointerEnd}>
-              <video key={videoUrl} ref={videoRef} className={`${orientation}${canDragPortrait ? ' draggable-video' : ''}`}
-                style={{
-                  objectFit: renderDisplayMode,
-                  objectPosition: canDragPortrait ? `${portraitPan.x}% ${portraitPan.y}%` : '50% 50%',
-                  transform: isMirrored ? 'scaleX(-1)' : 'scaleX(1)',
-                }} src={videoUrl} preload="metadata" playsInline draggable={false}
-                onLoadedMetadata={handleLoadedMetadata} onTimeUpdate={(event) => handleTimeUpdate(event.currentTarget)} onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} onEnded={() => setIsPlaying(false)} onError={() => setError('视频加载失败。此文件可能损坏，或编码不受当前浏览器支持。')}
-              />
+          <div ref={playerRef} className={`player-frame ${orientation}${compareMode ? ' comparing' : ''}`}>
+            <div className={`video-stage${compareMode ? ' compare-mode' : ''}`}>
+              <div ref={videoStageRef} className={`teacher-video-panel${canDragPortrait ? ' draggable-stage' : ''}`}
+                onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerEnd} onPointerCancel={handlePointerEnd}>
+                <video key={videoUrl} ref={videoRef} className={`${orientation}${canDragPortrait ? ' draggable-video' : ''}`}
+                  style={{
+                    objectFit: renderDisplayMode,
+                    objectPosition: canDragPortrait ? `${portraitPan.x}% ${portraitPan.y}%` : '50% 50%',
+                    transform: isMirrored ? 'scaleX(-1)' : 'scaleX(1)',
+                  }} src={videoUrl} preload="metadata" playsInline draggable={false}
+                  onLoadedMetadata={handleLoadedMetadata} onTimeUpdate={(event) => handleTimeUpdate(event.currentTarget)} onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} onEnded={() => setIsPlaying(false)} onError={() => setError('视频加载失败。此文件可能损坏，或编码不受当前浏览器支持。')}
+                />
+                {compareMode && <span className="panel-label">教师视频</span>}
+              </div>
+              {compareMode && <div className="camera-panel">
+                {cameraStatus === 'active' && <video ref={cameraVideoRef} className="camera-video" style={{ objectFit: 'contain', objectPosition: '50% 50%', transform: mirrorSelfView ? 'scaleX(-1)' : 'scaleX(1)' }} autoPlay muted playsInline />}
+                {cameraStatus !== 'active' && <div className={`camera-state ${cameraStatus}`} role={cameraStatus === 'error' ? 'alert' : 'status'}><span className="camera-state-icon" aria-hidden="true">◉</span><strong>{cameraStatus === 'loading' ? '正在启动摄像头…' : cameraStatus === 'error' ? '摄像头不可用' : '摄像头已停止'}</strong>{cameraMessage && <p>{cameraMessage}</p>}</div>}
+                <span className="panel-label">我的画面</span>
+                {cameraStatus === 'active' && <button type="button" className={`self-mirror-button ${mirrorSelfView ? 'active' : ''}`} onClick={() => setMirrorSelfView((value) => !value)}>镜像自己</button>}
+              </div>}
             </div>
             <div className="video-quick-controls" aria-label="常用画面控制">
               <button type="button" className={isMirrored ? 'active' : ''} onClick={toggleMirror}>镜像</button>
+              <button type="button" className={compareMode ? 'active' : ''} onClick={toggleCompareMode}>{compareMode ? '关闭摄像头' : '摄像头对比'}</button>
               <button type="button" onClick={() => setSettingsDrawerOpen(true)}>练习设置</button>
               <button type="button" onClick={() => void toggleFullscreen()}>全屏</button>
             </div>
@@ -532,6 +605,7 @@ function App() {
               <button type="button" disabled={safeSegmentIndex === 0} onClick={() => changeSegment(safeSegmentIndex - 1)}>上一段</button>
               <button type="button" disabled={safeSegmentIndex === learningSegments.length - 1} onClick={() => changeSegment(safeSegmentIndex + 1)}>下一段</button>
               <button type="button" className={playbackMode === 'loop' ? 'active' : ''} onClick={() => changePlaybackMode(playbackMode === 'loop' ? 'continuous' : 'loop')}>{playbackMode === 'loop' ? '循环' : '连续'}</button>
+              <button type="button" className={compareMode ? 'active' : ''} onClick={toggleCompareMode}>{compareMode ? '关闭摄像头' : '摄像头对比'}</button>
               {sidebarExpanded && <div className="sidebar-expanded-controls">
                 {learningSegments.length > 0 && <div className="fullscreen-segment-selector" aria-label="直接选择学习段">
                   {learningSegments.map((segment, index) => <button type="button" key={segment.segmentIndex} className={safeSegmentIndex === index ? 'active' : ''} onClick={() => changeSegment(index)}>{segment.segmentIndex}</button>)}
@@ -539,8 +613,8 @@ function App() {
                 {rangeButtons(true)}
                 <div className="sidebar-speed-buttons">{SPEEDS.map((value) => <button type="button" key={value} className={speed === value ? 'active' : ''} onClick={() => changeSpeed(value)}>{value}×</button>)}</div>
                 <button type="button" className={isMirrored ? 'active' : ''} onClick={toggleMirror}>镜像</button>
-                <button type="button" className={renderDisplayMode === 'contain' ? 'active' : ''} onClick={() => changeDisplayMode('contain')}>完整画面</button>
-                <button type="button" className={renderDisplayMode === 'cover' ? 'active' : ''} onClick={() => changeDisplayMode('cover')}>放大填充</button>
+                <button type="button" disabled={compareMode} className={renderDisplayMode === 'contain' ? 'active' : ''} onClick={() => changeDisplayMode('contain')}>完整画面</button>
+                <button type="button" disabled={compareMode} className={renderDisplayMode === 'cover' ? 'active' : ''} onClick={() => changeDisplayMode('cover')}>放大填充</button>
                 <button type="button" onClick={resetPicture}>重置画面</button>
                 <button type="button" onClick={() => setSide(sidebarSide === 'left' ? 'right' : 'left')}>移到{sidebarSide === 'left' ? '右' : '左'}侧</button>
               </div>}
@@ -576,8 +650,8 @@ function App() {
               <section className="drawer-section"><h3>播放速度</h3><div className="segmented">{SPEEDS.map((value) => <button type="button" key={value} className={speed === value ? 'active' : ''} onClick={() => changeSpeed(value)}>{value}×</button>)}</div></section>
               <section className="drawer-section"><h3>画面与声音</h3><div className="drawer-control-grid">
                 <button type="button" className={isMirrored ? 'active' : ''} onClick={toggleMirror}>镜像</button>
-                <button type="button" className={displayMode === 'contain' ? 'active' : ''} onClick={() => changeDisplayMode('contain')}>完整画面</button>
-                <button type="button" className={displayMode === 'cover' ? 'active' : ''} onClick={() => changeDisplayMode('cover')}>放大填充</button>
+                <button type="button" disabled={compareMode} className={renderDisplayMode === 'contain' ? 'active' : ''} onClick={() => changeDisplayMode('contain')}>完整画面</button>
+                <button type="button" disabled={compareMode} className={renderDisplayMode === 'cover' ? 'active' : ''} onClick={() => changeDisplayMode('cover')}>放大填充</button>
                 <button type="button" onClick={resetPicture}>重置画面</button>
                 <button type="button" onClick={toggleMute}>{isMuted || volume === 0 ? '取消静音' : '静音'}</button>
               </div><input aria-label="音量" type="range" min="0" max="1" step="0.05" value={volume} onChange={changeVolume} /></section>
