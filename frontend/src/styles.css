@@ -2,7 +2,7 @@
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 body { margin: 0; min-width: 320px; min-height: 100vh; }
-button, input { font: inherit; }
+button, input, select { font: inherit; }
 button { min-height: 42px; padding: 8px 13px; border: 1px solid #655b48; border-radius: 9px; color: inherit; background: #2a261e; cursor: pointer; transition: .15s ease; }
 button:hover { border-color: #d6b873; }
 button:active { transform: translateY(1px); }
@@ -51,8 +51,8 @@ video { display: block; min-width: 0; min-height: 0; width: 100%; height: 100%; 
 video.contain { object-fit: contain; } video.cover { object-fit: cover; } video.mirrored { transform: scaleX(-1); }
 .draggable-stage, .draggable-video { cursor: grab; touch-action: none; user-select: none; }.draggable-stage:active, .draggable-video:active { cursor: grabbing; }
 .timeline-row { display: grid; grid-template-columns: 52px 1fr 52px; align-items: center; gap: 10px; padding: 9px 14px; color: #cbc4b7; background: #0e0d0b; font-variant-numeric: tabular-nums; font-size: .86rem; }
-.video-quick-controls { position: absolute; top: 12px; right: 12px; z-index: 2; display: flex; gap: 6px; padding: 6px; border: 1px solid rgba(214,184,115,.38); border-radius: 11px; background: rgba(14,13,11,.74); backdrop-filter: blur(8px); }
-.video-quick-controls button { min-height: 34px; padding: 6px 10px; font-size: .76rem; }
+.video-quick-controls { position: absolute; top: 6px; right: 6px; z-index: 2; max-width: calc(100% - 12px); display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; padding: 4px; border: 1px solid rgba(214,184,115,.38); border-radius: 9px; background: rgba(14,13,11,.78); backdrop-filter: blur(8px); }
+.video-quick-controls button { min-height: 30px; padding: 4px 8px; font-size: .7rem; white-space: nowrap; }
 .fullscreen-status, .fullscreen-sidebar { display: none; }
 .file-row { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 12px 2px 8px; }
 .file-row div { min-width: 0; display: flex; align-items: baseline; gap: 12px; }.file-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.file-row span { flex: none; color: #9f988b; font-size: .85rem; }
@@ -86,7 +86,10 @@ video.contain { object-fit: contain; } video.cover { object-fit: cover; } video.
 .settings-drawer .segment-list { padding: 4px 0; }.settings-drawer .segment-list button { min-width: 92px; }
 .settings-drawer .practice-range-buttons, .settings-drawer .playback-mode-buttons { grid-template-columns: 1fr; margin: 0; }
 .drawer-control-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.teacher-framing-controls { display: grid; grid-template-columns: 1.2fr .72fr 1fr .72fr 1fr; align-items: center; gap: 5px; }.teacher-framing-controls button { min-width: 0; min-height: 36px; padding: 6px 7px; }.teacher-framing-controls output { min-width: 0; color: #ead8ab; font-size: .8rem; font-variant-numeric: tabular-nums; text-align: center; }.teacher-framing-controls.compact { grid-template-columns: 1fr .65fr 1fr .65fr 1fr; }.teacher-framing-controls.compact button { min-height: 32px; padding: 5px 4px; font-size: .7rem; }.framing-hint { margin: 0; color: #8f887b; font-size: .72rem; line-height: 1.5; }
+.teacher-framing-controls { display: grid; grid-template-columns: minmax(62px, 1fr) 36px 36px minmax(58px, 1fr) 38px; align-items: center; gap: 4px; }.teacher-framing-controls button { min-width: 0; min-height: 34px; padding: 5px 6px; overflow: hidden; font-size: .72rem; white-space: nowrap; }.framing-hint { margin: 0; color: #8f887b; font-size: .72rem; line-height: 1.5; }
+.video-quick-controls > .teacher-framing-controls { width: 250px; }
+.practice-range-select, .fullscreen-sidebar label { display: grid; gap: 5px; color: #d4cbbd; font-size: .76rem; }.practice-range-select select, .fullscreen-sidebar select { min-height: 36px; padding: 6px 8px; border: 1px solid #5b503e; border-radius: 7px; color: #eee4cf; background: #11100d; }
+.custom-sections { flex: none; padding: 0; overflow: hidden; }.custom-sections-toggle { width: 100%; display: flex; justify-content: space-between; gap: 10px; border: 0; color: #d9c99e; background: transparent; text-align: left; }.custom-sections-toggle span { color: #938a7b; font-size: .72rem; }.custom-sections-body { display: grid; gap: 8px; padding: 0 12px 12px; }.custom-sections-body p { margin: 0; color: #aaa294; font-size: .74rem; line-height: 1.45; }.custom-sections-body label { display: grid; gap: 5px; color: #d4cbbd; font-size: .75rem; }.custom-sections-body select { min-height: 36px; padding: 6px 8px; border: 1px solid #5b503e; border-radius: 7px; color: #eee4cf; background: #11100d; }.custom-sections-body > strong { color: #ead8ab; font-size: .78rem; font-variant-numeric: tabular-nums; }
 .drawer-setup { margin: 0; }.drawer-setup .setup-grid { grid-template-columns: 1fr; padding: 0 10px 10px; }
 .setup-current-time { margin: 0; padding: 9px 10px; border-radius: 8px; color: #d9c99e; background: #11100d; font-size: .82rem; font-variant-numeric: tabular-nums; }
 .error-message { margin: 12px 0 0; padding: 11px 13px; border: 1px solid #8e4c4c; border-radius: 9px; color: #ffd1d1; background: #3a2020; }.shortcut-hint { margin: 13px 2px 0; color: #928a7c; font-size: .8rem; text-align: center; }.shortcut-hint strong { margin-right: 8px; color: #c8beac; }
@@ -99,6 +102,7 @@ video.contain { object-fit: contain; } video.cover { object-fit: cover; } video.
 .player-frame:fullscreen .fullscreen-sidebar { position: absolute; top: 50%; z-index: 5; display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid rgba(224,189,105,.55); border-radius: 13px; background: rgba(20,18,14,.9); backdrop-filter: blur(10px); transform: translateY(-50%); max-height: 88vh; overflow-y: auto; }
 .fullscreen-sidebar.left { left: 12px; }.fullscreen-sidebar.right { right: 12px; }.fullscreen-sidebar.collapsed { width: 82px; }.fullscreen-sidebar.expanded { width: 210px; }
 .fullscreen-sidebar button { min-height: 38px; padding: 6px 8px; font-size: .78rem; }.sidebar-expanded-controls { display: grid; gap: 6px; padding-top: 4px; border-top: 1px solid #514938; }
+.fullscreen-sidebar.practice-only { width: 150px; }
 .fullscreen-segment-selector { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; max-height: 132px; overflow-y: auto; }.fullscreen-segment-selector button { min-width: 0; }
 .sidebar-range-buttons { display: grid; gap: 5px; }.sidebar-speed-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
 @media (max-width: 1100px) { .setup-grid { grid-template-columns: 1fr; }.practice-controls { grid-template-columns: repeat(5, 1fr); } }

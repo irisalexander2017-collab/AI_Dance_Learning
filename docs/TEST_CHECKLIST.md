@@ -150,3 +150,22 @@
 - [x] Iris personally used the MVP-08 recording flow and confirmed it works normally.
 - [ ] Full compatibility across browsers, operating systems, camera devices, codecs, and mobile devices — not verified.
 - [ ] Teacher-audio capture in every supported browser/device combination — not verified; the app can report a video-only recording when no capturable teacher-audio track is available.
+
+## Practice workflow simplification
+
+- [x] Teacher-view UI contains Mirror, Zoom out, Zoom in, Reset, and Fullscreen without the former Fit/Fill wording.
+- [x] Fullscreen sidebar source contains only speed, previous, next, practice range, play/pause, and exit fullscreen.
+- [x] Section 1 current-range calculation automatically includes the preparation lead-in.
+- [x] Previous/next navigation does not change the selected practice-range mode.
+- [x] Music start and dance start each require confirmation before sections are generated.
+- [x] Boundary offsets are stored per video and feed the same learning segments used by playback and recording.
+- [x] Full-dance is no longer offered as a practice-range option; older saved values safely fall back to current section.
+- [x] Custom sections are collapsed by default and edit one selected boundary through the main video timeline and a confirmation action.
+- [x] Music and dance start setup appears first in the preparation drawer with short Chinese/English instructions.
+- [x] Teacher controls use fixed compact columns and short labels so English text stays inside its buttons.
+- [x] Default production build and GitHub Pages production build pass.
+- [x] Real-browser check: collapsed Custom sections entry remains visibly full-height between Music and dance starts and Practice sections in Chinese and English.
+- [x] Real-browser check: Custom sections expands and collapses without hiding its entry or affecting drawer scrolling.
+- [ ] For future UI changes, verify actual visibility, readable labels, clickability, and expanded/collapsed states in a real browser; DOM/source presence and build success alone are not acceptance evidence.
+- [ ] Click versus drag behavior with a real video — browser runner could not reach the Windows local listener.
+- [ ] Fullscreen controls, camera, recording, teacher audio, local review, WebM download, and deletion regression — requires real local browser verification.

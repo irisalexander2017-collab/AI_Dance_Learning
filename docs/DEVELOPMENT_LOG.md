@@ -80,3 +80,17 @@
 - Recordings are generated in browser memory and are not uploaded or automatically saved; only the user-triggered WebM download creates a file.
 - TypeScript and production builds passed during MVP-08 development. Iris personally used the recording flow and confirmed it works normally.
 - This confirmation is not a full browser/device compatibility test. Other browsers, operating systems, camera devices, codecs, and mobile behavior remain unverified unless tested separately.
+
+## 2026-07-14 — Practice workflow simplification
+
+- Reorganized the normal page around preparation and reduced fullscreen controls to speed, previous/next section, practice range, play/pause, and exit fullscreen.
+- Unified teacher-view controls as Mirror, Zoom out, Zoom in, Reset, and Fullscreen. Reset restores the full view, default zoom, and centered position.
+- Added click-to-play/pause on the teacher video with a movement threshold so dragging a zoomed view does not toggle playback.
+- Made section 1 automatically include the calculated preparation lead-in and removed the separate preparation-range mode.
+- Kept previous/next navigation independent from the selected practice-range mode and replaced large range buttons with one compact selector.
+- Added explicit confirmation for both music start and dance start. Optional custom sections are collapsed by default; users choose one boundary, move the main video timeline, and confirm the current position. Saved overrides feed playback and recording ranges.
+- Removed the full-dance practice-range option and compacted the teacher toolbar against the video edge with short, fixed-size Chinese/English controls.
+- Updated Chinese and English guidance. Default and GitHub Pages production builds pass; browser interaction, camera, recording, audio, and download regression remain pending because the browser runner could not reach the Windows local listener.
+- Fixed a real-browser visibility regression where the collapsed Custom sections button existed in source and the DOM but its flex item shrank to about 2 px and clipped the 42 px button. The entry now keeps its height and appears after Music and dance starts, before Practice sections.
+- Process correction: source inspection and successful builds do not prove that a control is visible or usable. UI completion must report real-browser verification separately; if it has not run, the result must remain explicitly marked unverified before Iris is asked to validate it.
+- Verified the fix in Iris's live Chrome page in both Chinese and English: the collapsed entry remained about 44 px high, appeared in the intended order, expanded to show its controls, collapsed without disappearing, and left the drawer scrollable. The page was restored to Chinese with the entry collapsed after testing.

@@ -1,4 +1,4 @@
-export type PracticeRangeMode = 'current' | 'previous-current' | 'from-start' | 'full' | 'preparation-first'
+export type PracticeRangeMode = 'current' | 'previous-current' | 'from-start'
 
 export interface BeatPoint {
   time: number
@@ -81,6 +81,26 @@ export function buildLearningSegments(duration: number, formalStartTime: number,
   return segments
 }
 
+export function applyBoundaryOffsets(segments: LearningSegment[], offsets: number[], firstBeatTime: number, bpm: number) {
+  if (segments.length < 2) return segments
+  const boundaries = segments.slice(0, -1).map((segment, index) => {
+    const previous = index === 0 ? segments[0].startTime : segments[index - 1].endTime + (offsets[index - 1] ?? 0)
+    const next = segments[index + 1].endTime + (offsets[index + 1] ?? 0)
+    return Math.min(next - 0.25, Math.max(previous + 0.25, segment.endTime + (offsets[index] ?? 0)))
+  })
+  return segments.map((segment, index) => {
+    const startTime = index === 0 ? segment.startTime : boundaries[index - 1]
+    const endTime = index === segments.length - 1 ? segment.endTime : boundaries[index]
+    return {
+      ...segment,
+      startTime,
+      endTime,
+      startBeat: nearestBeatPoint(startTime, firstBeatTime, bpm).label,
+      endBeat: activeBeatPoint(Math.max(startTime, endTime - 0.001), firstBeatTime, bpm).label,
+    }
+  })
+}
+
 export function getPracticeRange(
   mode: PracticeRangeMode,
   segments: LearningSegment[],
@@ -88,15 +108,13 @@ export function getPracticeRange(
   duration: number,
   bpm: number,
 ): PracticeRange {
-  if (mode === 'full' || segments.length === 0) return { startTime: 0, endTime: duration }
+  if (segments.length === 0) return { startTime: 0, endTime: duration }
   const safeIndex = Math.min(Math.max(0, currentIndex), segments.length - 1)
   const current = segments[safeIndex]
-  if (mode === 'preparation-first') {
-    if (safeIndex === 0) return getPreparationRange(segments, bpm) ?? current
-    return { startTime: current.startTime, endTime: current.endTime }
-  }
-  if (mode === 'previous-current') return { startTime: segments[Math.max(0, safeIndex - 1)].startTime, endTime: current.endTime }
-  if (mode === 'from-start') return { startTime: segments[0].startTime, endTime: current.endTime }
+  const preparationStart = getPreparationRange(segments, bpm)?.startTime ?? segments[0].startTime
+  if (mode === 'current' && safeIndex === 0) return { startTime: preparationStart, endTime: current.endTime }
+  if (mode === 'previous-current') return { startTime: safeIndex <= 1 ? preparationStart : segments[safeIndex - 1].startTime, endTime: current.endTime }
+  if (mode === 'from-start') return { startTime: preparationStart, endTime: current.endTime }
   return { startTime: current.startTime, endTime: current.endTime }
 }
 
