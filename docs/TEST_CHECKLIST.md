@@ -138,3 +138,15 @@
 - [ ] Real portrait and landscape video regression with both languages — manual verification required.
 - [ ] Real camera permission, mirrored self-view, repeated open/close, and camera-light shutdown — manual verification required.
 - [ ] Fullscreen single/split zoom and pan, segment loop, continuous playback, speed, and mirror regression — manual verification required.
+
+## MVP-08 local practice recording
+
+- [x] User can start recording only after the local camera comparison is active.
+- [x] The flow provides 3, 5, and 10 second countdown choices and supports cancel/stop.
+- [x] The generated split-screen recording can be reviewed locally at 0.5×, 0.75×, and 1×.
+- [x] The review can be downloaded as WebM, deleted, or replaced by another recording.
+- [x] The implementation does not request microphone input or upload the recording.
+- [x] TypeScript and production builds passed during MVP-08 development.
+- [x] Iris personally used the MVP-08 recording flow and confirmed it works normally.
+- [ ] Full compatibility across browsers, operating systems, camera devices, codecs, and mobile devices — not verified.
+- [ ] Teacher-audio capture in every supported browser/device combination — not verified; the app can report a video-only recording when no capturable teacher-audio track is available.

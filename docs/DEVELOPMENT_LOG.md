@@ -71,3 +71,12 @@
 - Confirmed the user-facing application is frontend-only; the Phase 0 FastAPI health endpoint is not used by current frontend features.
 - Added GitHub Pages deployment for the `AI_Dance_Learning` repository subpath and verified the production asset paths locally.
 - TypeScript and Vite production build passed. Real camera hardware, fullscreen, and media interaction regression tests remain manual where browser automation is restricted.
+
+## 2026-07-13 — MVP-08 local practice recording
+
+- Added user-initiated local recording for the teacher-and-learner split view, with a 3, 5, or 10 second countdown and recording from the selected practice-range start.
+- Added local review at 0.5×, 0.75×, or 1×, WebM download, deletion, and record-again actions.
+- Practice recording uses the teacher-video audio when the browser exposes a capturable audio track. It does not request or record microphone or room audio.
+- Recordings are generated in browser memory and are not uploaded or automatically saved; only the user-triggered WebM download creates a file.
+- TypeScript and production builds passed during MVP-08 development. Iris personally used the recording flow and confirmed it works normally.
+- This confirmation is not a full browser/device compatibility test. Other browsers, operating systems, camera devices, codecs, and mobile behavior remain unverified unless tested separately.

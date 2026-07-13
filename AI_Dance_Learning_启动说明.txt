@@ -14,11 +14,11 @@ C:\Users\Iris\Desktop\AI_Dance_Learning
 “在终端中打开”
 或者打开 Windows PowerShell。
 
-3. 运行：
+3. 运行前端：
 
-powershell -ExecutionPolicy Bypass -File .\start_all.ps1
+powershell -ExecutionPolicy Bypass -File .\start_frontend.ps1
 
-这个命令会同时启动前端和后端。
+当前用户功能全部在前端运行，不需要启动后端。
 
 启动成功后，在浏览器打开：
 
@@ -27,19 +27,7 @@ http://127.0.0.1:5173
 
 ================================
 
-【如果 start_all.ps1 不工作，就分别启动】
-
-需要打开两个 PowerShell 窗口。
-
-
-第一个窗口：启动后端
-
-cd C:\Users\Iris\Desktop\AI_Dance_Learning
-
-powershell -ExecutionPolicy Bypass -File .\start_backend.ps1
-
-
-第二个窗口：启动前端
+【手动输入完整命令】
 
 cd C:\Users\Iris\Desktop\AI_Dance_Learning
 
@@ -57,8 +45,8 @@ Local: http://127.0.0.1:5173/
 
 【重要提醒】
 
-1. 前端和后端的 PowerShell 窗口要保持打开。
-2. 不要在软件运行时关闭这两个窗口。
+1. 前端的 PowerShell 窗口要保持打开。
+2. 不要在软件运行时关闭这个窗口。
 3. Codex 修改普通前端代码后，通常不需要重新启动。
 4. 页面没有变化时，先按：
 
@@ -78,7 +66,7 @@ Ctrl + Shift + R
 
 【停止软件】
 
-关闭前端和后端的 PowerShell 窗口即可。
+关闭前端的 PowerShell 窗口即可。
 
 也可以在 PowerShell 中按：
 
