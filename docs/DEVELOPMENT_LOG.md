@@ -94,3 +94,39 @@
 - Fixed a real-browser visibility regression where the collapsed Custom sections button existed in source and the DOM but its flex item shrank to about 2 px and clipped the 42 px button. The entry now keeps its height and appears after Music and dance starts, before Practice sections.
 - Process correction: source inspection and successful builds do not prove that a control is visible or usable. UI completion must report real-browser verification separately; if it has not run, the result must remain explicitly marked unverified before Iris is asked to validate it.
 - Verified the fix in Iris's live Chrome page in both Chinese and English: the collapsed entry remained about 44 px high, appeared in the intended order, expanded to show its controls, collapsed without disappearing, and left the drawer scrollable. The page was restored to Chinese with the entry collapsed after testing.
+
+## 2026-10-11 — Mobile-first practice controls
+
+- Replaced the large settings drawer and duplicated controls with a fixed bottom dock and compact menu. Section numbers are separate from the timeline and can be folded manually.
+- Added Single / Build-up selection: N only or 1 through N, with preparation included for section 1. Playback once stops at the selected range; repeat retains the two-second rest.
+- Added timeline Music start / Dance start actions that confirm the selected position without forcing it to a guessed beat. Both markers generate eight-beat sections.
+- Added browser-local tempo estimation, worker processing, cancellation, confidence fallback and manual calibration. No runtime service, paid API or upload was introduced.
+- Added multi-pointer zoom/drag with tap suppression, preserving independent teacher framing in single and camera comparison.
+- Preserved the recording pipeline and added visible errors/audio fallback notices; recording review safely exits fullscreen.
+- Independent review found and fixed manual-tempo overwrite on reimport, stale custom-menu range bypass, stale boundary selection after changing BPM and hidden recording errors. Also fixed non-monotonic boundary offsets and cancelled stale loop timers during calibration.
+- Added unit and installed-Chrome browser regression tests, generated-media fixtures and bilingual instructions. Compatible security patches updated PostCSS, nanoid and source-map-js; npm audit reports zero vulnerabilities.
+- Verification details are in MOBILE_PRACTICE_TEST_REPORT.md. No commit, push or deployment in this task.
+
+## 2026-10-11 — Automatic BPM recognition improvement
+
+- Replaced the basic low-frequency energy estimator with multi-band spectral-flux onset analysis, centered autocorrelation, harmonic/interval checks and cross-window agreement. Distributed audio sampling now covers the track rather than only the first90 seconds; range is40–240 BPM.
+- Fixed old default100/marker settings skipping detection, invalid saved manual BPM becoming a false100, noise false positives and integer-frame half-tempo bias.
+- Exposed automatic/manual/unrecognized status in the existing compact dock; only detected or confirmed BPM generates sections. Manual input cancels analysis immediately, while unconfirmed drafts preserve the previous confirmed mode and section.
+- Added a shared20-second deadline and cancellation across reading, decoding and Worker computation; compatible same-tempo reanalysis preserves custom boundaries.
+- Expanded known-tempo and real-Chrome tests; real Fine China audio measured103.8 against a104 reference. Current verification and limits are recorded in BPM_AUTO_TEST_REPORT.md. No runtime dependency, cloud upload, deployment configuration change, commit, push or deployment was added.
+
+## 2026-10-11 — User-reported three-beat BPM misidentification
+
+- Reproduced shaheem-shegoesby.mp4 at48.7 BPM twice in real Chrome; independent full/mid-band audio analysis supported approximately146–147.
+- Balanced normalized spectral bands so a repeating bass motif cannot dominate; rejected nearly tied non-octave candidates and counted failed audible windows in agreement checks while still allowing silent introductions.
+- Added six failure-first logic regressions and a real-Chrome first/repeat-import test. All31 logic tests and each production path's25 browser tests passed with both real samples enabled.
+- Real She goes by now returns147.3; Fine China remains103.9. Reviewed the mobile screenshot and confirmed downloaded recording includes audible teacher audio. Independent read-only review found no blocking issues.
+- No filename special case, fixed BPM multiplier, runtime dependency, external upload, other product UI/recording change, deployment configuration change, commit, push or deployment.
+
+## 2026-10-11 — Continuous Music/Dance setup
+
+- Reproduced premature setup exit in real Chrome when a saved Dance start was mistaken for confirmation in the current session.
+- Added a session-only Music→Dance step, reset on entry without clearing saved markers. Music confirmation stays in setup; valid Dance confirmation finishes it. Added short bilingual next-step guidance and renamed the manual exit action to Exit setup.
+- Three new failure-first browser cases cover restored markers in both languages and invalid Dance starts with recovery. Read-only review confirmed scope and added preservation assertions.
+- One original calibration persistence test raced page reload against the save effect; added observable manual-mode and saved-value assertions, not fixed sleeps or product BPM changes. Final root and GitHub Pages regressions each pass28 tests; all31 logic tests and both builds pass. Downloaded recording retains audible teacher audio.
+- Updated current instructions and recorded evidence in PRACTICE_SETUP_TEST_REPORT.md. No style, BPM algorithm, custom-section, recording, dependency or deployment configuration change; no commit, push or deployment. Dev server remains running.

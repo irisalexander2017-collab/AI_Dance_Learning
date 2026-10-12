@@ -34,3 +34,6 @@ Thumbs.db
 *.log
 *.tmp
 *.temp
+frontend/test-results/
+frontend/playwright-report/
+frontend/.test-artifacts/

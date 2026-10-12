@@ -22,6 +22,14 @@ Open http://127.0.0.1:5173.
 
 The current app does not require the backend to run.
 
+## Practice workflow
+
+The video stays above a fixed dock. Tap Speed for presets; Single + 3 practices section 3, while Build-up + 3 practices sections 1–3. The arrow folds or opens section numbers without hiding playback controls.
+
+Importing a video automatically analyzes its audio locally for BPM (40–240). The dock shows the detected or manually confirmed tempo; failure never masquerades as a default 100 BPM. Menu → Practice setup: seek and confirm Music start, then seek to the first move and confirm Dance start without reopening the menu. Saved starts do not skip either step. Both markers plus a detected/confirmed BPM generate eight-beat sections. Beat calibration is a fallback; Custom sections are optional in the menu. Pinch to zoom and drag to move; desktop zoom/reset controls are in Menu → View. Recording remains local.
+
+See [current status](docs/CURRENT_STATUS.md), [continuous setup evidence](docs/PRACTICE_SETUP_TEST_REPORT.md), [BPM accuracy and browser evidence](docs/BPM_AUTO_TEST_REPORT.md), and [earlier mobile test evidence](docs/MOBILE_PRACTICE_TEST_REPORT.md). Node 22.18+ is required for the test commands; Chrome and FFmpeg are needed for browser/media regression tests.
+
 The FastAPI health endpoint is no longer required by the user-facing app. It can still be started separately for legacy development checks:
 
 ```powershell

@@ -1,7 +1,10 @@
 import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { PracticeDock } from './practice/PracticeDock'
+import { TeacherGesture } from './practice/teacherGesture'
+import { analyzeVideoTempo } from './practice/tempoAnalysis'
+import { normalizePracticeState, type SavedPracticeState } from './practice/savedPractice'
+import { safeStorage } from './practice/safeStorage'
 import {
-  beatDuration,
-  beatPointAtStep,
   applyBoundaryOffsets,
   buildLearningSegments,
   getPracticeRange,
@@ -19,31 +22,6 @@ type TeacherFraming = { zoom: number; panX: number; panY: number }
 type UiLanguage = 'zh' | 'en'
 type RecordingStatus = 'idle' | 'countdown' | 'recording' | 'processing' | 'ready' | 'error'
 
-interface SavedPracticeState {
-  bpm: number
-  firstBeatTime: number | null
-  firstBeatConfirmed: boolean
-  rawFormalStartTime: number | null
-  formalStartTime: number | null
-  formalStartLabel: string
-  currentSegmentIndex: number
-  rangeMode: PracticeRangeMode
-  playbackMode: PlaybackMode
-  boundaryOffsets: number[]
-}
-
-const DEFAULT_PRACTICE_STATE: SavedPracticeState = {
-  bpm: 100,
-  firstBeatTime: null,
-  firstBeatConfirmed: false,
-  rawFormalStartTime: null,
-  formalStartTime: null,
-  formalStartLabel: '',
-  currentSegmentIndex: 0,
-  rangeMode: 'current',
-  playbackMode: 'loop',
-  boundaryOffsets: [],
-}
 const DEFAULT_TEACHER_FRAMING: TeacherFraming = { zoom: 1, panX: 0, panY: 0 }
 const MIN_TEACHER_ZOOM = 1
 const MAX_TEACHER_ZOOM = 3
@@ -53,7 +31,7 @@ const RECORDING_HEIGHT = 720
 const RECORDING_FPS = 30
 
 function readStoredNumber(key: string, fallback: number) {
-  const stored = localStorage.getItem(key)
+  const stored = safeStorage.getItem(key)
   const value = stored === null ? NaN : Number(stored)
   return Number.isFinite(value) ? value : fallback
 }
@@ -68,19 +46,8 @@ function formatFileSize(bytes: number) {
 }
 
 function readPracticeState(key: string): SavedPracticeState {
-  try {
-    const stored = JSON.parse(localStorage.getItem(key) ?? '') as Partial<SavedPracticeState>
-    return {
-      ...DEFAULT_PRACTICE_STATE,
-      ...stored,
-      playbackMode: stored.playbackMode === 'continuous' ? 'continuous' : 'loop',
-      rangeMode: ['current', 'previous-current', 'from-start'].includes(stored.rangeMode ?? '') ? stored.rangeMode as PracticeRangeMode : 'current',
-      boundaryOffsets: Array.isArray(stored.boundaryOffsets) ? stored.boundaryOffsets.filter(Number.isFinite) : [],
-      firstBeatConfirmed: stored.firstBeatConfirmed ?? stored.firstBeatTime !== null,
-    }
-  } catch {
-    return DEFAULT_PRACTICE_STATE
-  }
+  try { return normalizePracticeState(JSON.parse(safeStorage.getItem(key) ?? 'null')) }
+  catch { return normalizePracticeState(null) }
 }
 
 function LandingPage({ onStart, language, setLanguage }: { onStart: () => void; language: UiLanguage; setLanguage: (language: UiLanguage) => void }) {
@@ -97,21 +64,17 @@ function LandingPage({ onStart, language, setLanguage }: { onStart: () => void; 
   }, [guideOpen])
 
   const guideSteps = language === 'zh' ? [
-    ['上传舞蹈视频', '选择本地 MP4、MOV 或 WebM。视频只在浏览器中打开，不会上传。'],
-    ['确认两个起点', '先把播放位置设为音乐起点并确认，再设为舞蹈起点并确认。系统会自动生成分段，第1段自动带上预备拍。'],
-    ['检查分段', '系统会自动按八拍分段。如有需要，可打开“自定义分段”，拖动视频进度条并确认新的分界。'],
-    ['控制播放', '使用播放、暂停、回看 2 秒、前进 2 秒、四档速度、教师镜像和全屏。'],
-    ['与摄像头对比', '打开摄像头后，教师与自己同时显示。自己的画面默认镜像；摄像头画面保留在本机，不会上传。点击“关闭摄像头”即可结束并关闭设备。'],
-    ['调整教师画面', '使用镜像、缩小、放大、重置和全屏。重置会恢复完整显示、默认大小和居中位置；放大后可直接拖动教师画面。'],
-    ['录制并回看练习', '在摄像头对比中选择 3、5 或 10 秒倒计时，从当前练习段起点录制干净的左右分屏。练习录像包含老师视频的声音，不会录制麦克风或环境声音；录像只在浏览器本地生成。'],
+    ['选择视频', '打开本地 MP4、MOV 或 WebM。视频、摄像头和节拍分析均留在本机。'],
+    ['设置两个起点', '菜单 → 练习设置。移动进度条，先确认“音乐起点”，再移动到动作开始处确认“动作起点”；不用重新打开菜单。完成后自动按八拍分段，第1段带预备拍。'],
+    ['用底栏练习', '点速度展开档位。单段选3只练第3段；累加选3练第1–3段。段号独立于进度条，点箭头可收起或展开，放大视频不会藏住控制条。'],
+    ['调整画面或分段', '双指缩放，放大后拖动；轻点画面播放或暂停。菜单内可重置完整画面、默认大小和居中，也可校准节拍或打开自定义分段，拖进度条后确认分界。自动分析只估算稳定节拍，不识别舞蹈动作。'],
+    ['摄像头与录像', '摄像头按钮开关对比，自己的画面默认镜像。录像设置保留3、5、10秒倒计时。录像包含浏览器支持的老师音轨，不录麦克风，不上传；可回看、变速、下载WebM、删除或再录。刷新前请下载要保留的录像。'],
   ] : [
-    ['Upload a dance video', 'Choose a local MP4, MOV, or WebM file. The video opens only in your browser and is not uploaded.'],
-    ['Confirm two start points', 'Move to the music start and confirm it, then move to the choreography start and confirm it. Sections are generated automatically, and section 1 includes a preparation lead-in.'],
-    ['Check the sections', 'Sections are created automatically in eight-counts. If needed, open Custom sections, move the video timeline, and confirm a new boundary.'],
-    ['Control playback', 'Play, pause, go back 2 seconds, go forward 2 seconds, choose a speed, mirror the teacher, or enter fullscreen.'],
-    ['Compare with your camera', 'Show the teacher and yourself together. Your self-view is mirrored by default. Camera video stays on this device and is never uploaded. Select “Turn camera off” to stop the camera.'],
-    ['Reframe the teacher video', 'Use Mirror, Zoom out, Zoom in, Reset, and Fullscreen. Reset restores the full view, default size, and centered position. Drag the teacher video after zooming in.'],
-    ['Record and review practice', 'In camera comparison, choose a 3, 5, or 10 second countdown and record a clean split view from the current practice-range start. Practice recordings include the teacher video audio. Microphone and room audio are not recorded.'],
+    ['Choose a video', 'Open a local MP4, MOV or WebM. Video, camera and beat analysis stay on this device.'],
+    ['Mark two starts', 'Menu → Practice setup. Seek and confirm Music start, then seek to the first move and confirm Dance start without reopening the menu. Both starts create eight-beat sections; section 1 includes preparation.'],
+    ['Practice with the dock', 'Tap Speed for presets. Single + 3 practices section 3; Build-up + 3 practices 1–3. Section numbers are separate from the timeline. Use the arrow to fold them. Zoom never hides the dock.'],
+    ['Adjust the view or sections', 'Pinch to zoom; drag after zooming. Tap the video to play or pause. Menu offers Reset, beat calibration and Custom sections. To move a boundary, seek and confirm. Beat analysis estimates steady tempo, not choreography.'],
+    ['Camera and recording', 'Camera toggles comparison; self-view is mirrored by default. Recording settings retain 3, 5 and 10 second countdowns. Record supported teacher audio, never the microphone. Review, change review speed, download WebM, delete or record again. Download before refreshing; nothing is uploaded.'],
   ]
 
   return (
@@ -164,15 +127,24 @@ function App() {
   const countdownRestoreRef = useRef<{ time: number; wasPlaying: boolean } | null>(null)
   const videoStageRef = useRef<HTMLDivElement>(null)
   const playerRef = useRef<HTMLDivElement>(null)
-  const practiceControlsRef = useRef<HTMLDivElement>(null)
   const settingsDrawerRef = useRef<HTMLElement>(null)
   const objectUrlRef = useRef<string | null>(null)
-  const dragRef = useRef<{ pointerId: number; startX: number; startY: number; panX: number; panY: number; moved: boolean } | null>(null)
-  const clickStartRef = useRef<{ pointerId: number; startX: number; startY: number } | null>(null)
+  const gestureRef = useRef(new TeacherGesture())
+  const analysisRef = useRef<AbortController | null>(null)
+  const fileRef = useRef<File | null>(null)
+  const [setupMode, setSetupMode] = useState(false)
+  const [setupStep, setSetupStep] = useState<'music' | 'dance'>('music')
+  const [markerOpen, setMarkerOpen] = useState(false)
+  const [dockExpanded, setDockExpanded] = useState(true)
+  const [dockHint, setDockHint] = useState(() => safeStorage.getItem('adl-dock-hint') !== 'dismissed')
+  const [menuPage, setMenuPage] = useState<'main' | 'tempo' | 'custom' | 'sound' | 'recording' | 'view' | 'help'>('main')
+  const [tempoStatus, setTempoStatus] = useState<'analyzing' | 'auto' | 'manual' | 'editing' | 'unavailable'>('manual')
+  const [tempoFailure, setTempoFailure] = useState('')
+  const [confirmedTempoMode, setConfirmedTempoMode] = useState<SavedPracticeState['tempoMode']>('unset')
   const loopTimerRef = useRef<number | null>(null)
   const loopPendingRef = useRef(false)
   const [showLanding, setShowLanding] = useState(true)
-  const [language, setLanguage] = useState<UiLanguage>(() => localStorage.getItem('frametune-language') === 'en' ? 'en' : 'zh')
+  const [language, setLanguage] = useState<UiLanguage>(() => safeStorage.getItem('frametune-language') === 'en' ? 'en' : 'zh')
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
   const [fileName, setFileName] = useState('')
   const [fileSize, setFileSize] = useState(0)
@@ -185,7 +157,7 @@ function App() {
     const stored = readStoredNumber('adl-playback-speed', 1)
     return SPEEDS.includes(stored as (typeof SPEEDS)[number]) ? stored : 1
   })
-  const [isMirrored, setIsMirrored] = useState(() => localStorage.getItem('adl-mirrored') === 'true')
+  const [isMirrored, setIsMirrored] = useState(() => safeStorage.getItem('adl-mirrored') === 'true')
   const [volume, setVolume] = useState(() => Math.min(1, Math.max(0, readStoredNumber('adl-volume', 1))))
   const [isMuted, setIsMuted] = useState(false)
   const [orientation, setOrientation] = useState<VideoOrientation>('landscape')
@@ -193,7 +165,6 @@ function App() {
   const [singleTeacherFraming, setSingleTeacherFraming] = useState<TeacherFraming>(DEFAULT_TEACHER_FRAMING)
   const [splitTeacherFraming, setSplitTeacherFraming] = useState<TeacherFraming>(DEFAULT_TEACHER_FRAMING)
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const [setupExpanded, setSetupExpanded] = useState(true)
   const [settingsDrawerOpen, setSettingsDrawerOpen] = useState(false)
   const [bpmInput, setBpmInput] = useState('100')
   const [bpm, setBpm] = useState(100)
@@ -201,14 +172,12 @@ function App() {
   const [firstBeatTime, setFirstBeatTime] = useState<number | null>(null)
   const [firstBeatConfirmed, setFirstBeatConfirmed] = useState(false)
   const [rawFormalStartTime, setRawFormalStartTime] = useState<number | null>(null)
-  const [formalCandidate, setFormalCandidate] = useState<{ time: number; label: string; delta: number } | null>(null)
   const [formalStartTime, setFormalStartTime] = useState<number | null>(null)
   const [formalStartLabel, setFormalStartLabel] = useState('')
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0)
   const [rangeMode, setRangeMode] = useState<PracticeRangeMode>('current')
   const [playbackMode, setPlaybackMode] = useState<PlaybackMode>('loop')
   const [boundaryOffsets, setBoundaryOffsets] = useState<number[]>([])
-  const [customSectionsOpen, setCustomSectionsOpen] = useState(false)
   const [selectedBoundaryIndex, setSelectedBoundaryIndex] = useState(0)
   const [isLoopWaiting, setIsLoopWaiting] = useState(false)
   const [compareMode, setCompareMode] = useState(false)
@@ -233,9 +202,9 @@ function App() {
   const teacherFraming = compareMode ? splitTeacherFraming : singleTeacherFraming
   const canPanTeacher = teacherFraming.zoom > MIN_TEACHER_ZOOM || (!compareMode && renderDisplayMode === 'cover')
   const naturalLearningSegments = useMemo(() => (
-    firstBeatTime === null || !firstBeatConfirmed || formalStartTime === null || !duration
+    firstBeatTime === null || !firstBeatConfirmed || formalStartTime === null || !duration || (tempoStatus !== 'auto' && tempoStatus !== 'manual' && !(tempoStatus === 'editing' && confirmedTempoMode !== 'unset'))
       ? [] : buildLearningSegments(duration, formalStartTime, firstBeatTime, bpm)
-  ), [bpm, duration, firstBeatConfirmed, firstBeatTime, formalStartTime])
+  ), [bpm, confirmedTempoMode, duration, firstBeatConfirmed, firstBeatTime, formalStartTime, tempoStatus])
   const learningSegments = useMemo(() => (
     firstBeatTime === null ? naturalLearningSegments : applyBoundaryOffsets(naturalLearningSegments, boundaryOffsets, firstBeatTime, bpm)
   ), [boundaryOffsets, bpm, firstBeatTime, naturalLearningSegments])
@@ -291,7 +260,7 @@ function App() {
   }, [])
 
   useEffect(() => {
-    localStorage.setItem('frametune-language', language)
+    safeStorage.setItem('frametune-language', language)
     document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en'
     setError('')
     setBpmError('')
@@ -300,6 +269,7 @@ function App() {
   }, [language])
 
   useEffect(() => () => {
+    analysisRef.current?.abort()
     cancelPendingLoop()
     recordingSessionRef.current += 1
     if (recordingTimerRef.current !== null) window.clearInterval(recordingTimerRef.current)
@@ -338,7 +308,6 @@ function App() {
       if (!target) return
       if (settingsDrawerRef.current?.contains(target)) return
       if (playerRef.current?.contains(target)) return
-      if (practiceControlsRef.current?.contains(target)) return
       setSettingsDrawerOpen(false)
     }
     window.addEventListener('keydown', handleDrawerKeyDown)
@@ -351,6 +320,8 @@ function App() {
 
   useEffect(() => {
     if (!reviewOpen) return
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => {})
+    setIsFullscreen(false)
     const closeReviewOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') closeReviewToPractice()
     }
@@ -360,11 +331,12 @@ function App() {
 
   useEffect(() => {
     if (!practiceStorageKey) return
-    localStorage.setItem(practiceStorageKey, JSON.stringify({
+    safeStorage.setItem(practiceStorageKey, JSON.stringify({
+      schemaVersion: 2, tempoMode: confirmedTempoMode,
       bpm, firstBeatTime, firstBeatConfirmed, rawFormalStartTime, formalStartTime, formalStartLabel,
-      currentSegmentIndex: safeSegmentIndex, rangeMode, playbackMode, boundaryOffsets,
+      currentSegmentIndex: tempoStatus === 'analyzing' || tempoStatus === 'editing' ? currentSegmentIndex : safeSegmentIndex, rangeMode, playbackMode, boundaryOffsets,
     } satisfies SavedPracticeState))
-  }, [boundaryOffsets, bpm, firstBeatConfirmed, firstBeatTime, formalStartLabel, formalStartTime, playbackMode, practiceStorageKey, rangeMode, rawFormalStartTime, safeSegmentIndex])
+  }, [boundaryOffsets, bpm, confirmedTempoMode, currentSegmentIndex, firstBeatConfirmed, firstBeatTime, formalStartLabel, formalStartTime, playbackMode, practiceStorageKey, rangeMode, rawFormalStartTime, safeSegmentIndex, tempoStatus])
 
   const seekBy = useCallback((seconds: number) => {
     const video = videoRef.current
@@ -395,23 +367,21 @@ function App() {
       return
     }
     try {
-      if (video.currentTime >= practiceRange.endTime - 0.04 || video.currentTime < practiceRange.startTime) video.currentTime = practiceRange.startTime
+      if (!setupMode && !(settingsDrawerOpen && menuPage === 'custom') && (video.currentTime >= practiceRange.endTime - 0.04 || video.currentTime < practiceRange.startTime)) video.currentTime = practiceRange.startTime
       await video.play()
       setError('')
     } catch {
       setError(text('无法播放此视频。请确认文件格式受浏览器支持。', 'This video could not be played. Check that its format is supported by your browser.'))
     }
-  }, [cancelPendingLoop, isLoopWaiting, language, practiceRange.endTime, practiceRange.startTime, videoUrl])
+  }, [cancelPendingLoop, isLoopWaiting, language, practiceRange.endTime, practiceRange.startTime, videoUrl, setupMode, menuPage, settingsDrawerOpen])
 
   const changeSegment = useCallback((index: number) => {
     if (!learningSegments.length) return
     cancelPendingLoop()
     const nextIndex = Math.min(Math.max(0, index), learningSegments.length - 1)
     setCurrentSegmentIndex(nextIndex)
-    const nextStart = nextIndex === 0 && rangeMode === 'current'
-      ? getPracticeRange('current', learningSegments, 0, duration, bpm).startTime
-      : learningSegments[nextIndex].startTime
-    if (videoRef.current) videoRef.current.currentTime = nextStart
+    const nextStart = getPracticeRange(rangeMode, learningSegments, nextIndex, duration, bpm).startTime
+    if (videoRef.current) { videoRef.current.pause(); videoRef.current.currentTime = nextStart }
     setCurrentTime(nextStart)
   }, [bpm, cancelPendingLoop, duration, learningSegments, rangeMode])
 
@@ -422,17 +392,10 @@ function App() {
 
   const handleTimeUpdate = (video: HTMLVideoElement) => {
     setCurrentTime(video.currentTime)
-    if (!learningSegments.length || video.paused || loopPendingRef.current || video.currentTime < practiceRange.endTime - 0.04) return
+    if (setupMode || (settingsDrawerOpen && menuPage === 'custom') || !learningSegments.length || video.paused || loopPendingRef.current || video.currentTime < practiceRange.endTime - 0.04) return
     if (playbackMode === 'continuous') {
-      if (rangeMode === 'current' && safeSegmentIndex < learningSegments.length - 1) {
-        const nextIndex = safeSegmentIndex + 1
-        setCurrentSegmentIndex(nextIndex)
-        video.currentTime = learningSegments[nextIndex].startTime
-        setCurrentTime(learningSegments[nextIndex].startTime)
-      } else {
-        video.pause()
-        video.currentTime = practiceRange.endTime
-      }
+      video.pause()
+      video.currentTime = practiceRange.endTime
       return
     }
     loopPendingRef.current = true
@@ -449,7 +412,7 @@ function App() {
 
   const toggleMirror = useCallback(() => {
     setIsMirrored((current) => {
-      localStorage.setItem('adl-mirrored', String(!current))
+      safeStorage.setItem('adl-mirrored', String(!current))
       return !current
     })
   }, [])
@@ -457,17 +420,20 @@ function App() {
   const toggleFullscreen = useCallback(async () => {
     try {
       if (document.fullscreenElement === playerRef.current) await document.exitFullscreen()
-      else await playerRef.current?.requestFullscreen()
+      else if (isFullscreen) setIsFullscreen(false)
+      else if (playerRef.current?.requestFullscreen) await playerRef.current.requestFullscreen()
+      else setIsFullscreen(true)
     } catch {
       setError(text('浏览器无法切换全屏模式。', 'The browser could not switch fullscreen mode.'))
     }
-  }, [language])
+  }, [language, isFullscreen])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
       if (target?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName ?? '')) return
       const key = event.key.toLowerCase()
+      if (event.code === 'Space' && target?.tagName === 'BUTTON') return
       if (event.code === 'Space') { event.preventDefault(); void togglePlayback() }
       else if (event.code === 'ArrowLeft') { event.preventDefault(); seekBy(-2) }
       else if (event.code === 'ArrowRight') { event.preventDefault(); seekBy(2) }
@@ -491,17 +457,59 @@ function App() {
       return
     }
     cancelPendingLoop()
+    analysisRef.current?.abort()
+    fileRef.current = file
     if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
     const storageKey = videoStorageKey(file)
     const saved = readPracticeState(storageKey)
+    setConfirmedTempoMode(saved.tempoMode)
     const url = URL.createObjectURL(file)
     objectUrlRef.current = url
     setVideoUrl(url); setFileName(file.name); setFileSize(file.size); setPracticeStorageKey(storageKey)
-    setBpm(saved.bpm); setBpmInput(String(saved.bpm)); setFirstBeatTime(saved.firstBeatTime); setFirstBeatConfirmed(saved.firstBeatConfirmed)
+    setBpm(saved.bpm); setBpmInput(saved.tempoMode === 'manual' ? String(saved.bpm) : ''); setFirstBeatTime(saved.firstBeatTime); setFirstBeatConfirmed(saved.firstBeatConfirmed)
     setRawFormalStartTime(saved.rawFormalStartTime); setFormalStartTime(saved.formalStartTime); setFormalStartLabel(saved.formalStartLabel)
-    setFormalCandidate(null); setCurrentSegmentIndex(saved.currentSegmentIndex); setRangeMode(saved.rangeMode); setPlaybackMode(saved.playbackMode); setBoundaryOffsets(saved.boundaryOffsets); setCustomSectionsOpen(false); setSelectedBoundaryIndex(0)
+    setCurrentSegmentIndex(saved.currentSegmentIndex); setRangeMode(saved.rangeMode); setPlaybackMode(saved.playbackMode); setBoundaryOffsets(saved.boundaryOffsets); setSelectedBoundaryIndex(0)
     setSingleTeacherFraming(DEFAULT_TEACHER_FRAMING); setSplitTeacherFraming(DEFAULT_TEACHER_FRAMING); setDisplayMode('contain')
-    setSetupExpanded(saved.formalStartTime === null); setSettingsDrawerOpen(saved.formalStartTime === null); setDuration(0); setCurrentTime(0); setIsPlaying(false); setOrientation('landscape'); setError('')
+    setSetupMode(false); setMarkerOpen(false); setSettingsDrawerOpen(false); setMenuPage('main'); setDockExpanded(true); setDuration(0); setCurrentTime(0); setIsPlaying(false); setOrientation('landscape'); setError('')
+    gestureRef.current.reset()
+    if (saved.tempoMode === 'manual') { setTempoStatus('manual'); setTempoFailure('') }
+    else runTempoAnalysis(file, saved.bpm)
+    event.target.value = ''
+  }
+
+  const runTempoAnalysis = (file: File, previousBpm?: number) => {
+    analysisRef.current?.abort()
+    const controller = new AbortController()
+    analysisRef.current = controller
+    setTempoStatus('analyzing'); setTempoFailure(''); setBpmInput(''); setBpmError('')
+    void analyzeVideoTempo(file, controller.signal).then(result => {
+      if (controller.signal.aborted) return
+      if (!result || result.confidence < .2) { setTempoStatus('unavailable'); setTempoFailure('unstable'); return }
+      cancelPendingLoop()
+      setBpm(result.bpm); setBpmInput(String(result.bpm));
+      if (previousBpm === undefined || Math.abs(previousBpm - result.bpm) > Math.max(.5, previousBpm * .01)) { setBoundaryOffsets([]); setSelectedBoundaryIndex(0) }
+      setTempoStatus('auto'); setConfirmedTempoMode('auto')
+    }).catch((failure: unknown) => {
+      if (!controller.signal.aborted) { setTempoStatus('unavailable'); setTempoFailure(failure instanceof Error ? failure.message : 'analysis-failed') }
+    })
+  }
+
+  const markTimelineStart = (kind: 'music' | 'dance') => {
+    if (kind === 'dance' && setupStep !== 'dance') return
+    const time = videoRef.current?.currentTime ?? currentTime
+    if (time >= duration - .25) { setError(text('起点需要放在视频结束之前。', 'Choose a start before the video ends.')); return }
+    if (kind === 'dance' && firstBeatTime !== null && time < firstBeatTime) { setError(text('动作起点不能早于音乐起点。', 'Dance start must be after music start.')); return }
+    if (kind === 'music') {
+      setFirstBeatTime(time); setFirstBeatConfirmed(true)
+      setSetupStep('dance')
+      if (formalStartTime !== null && formalStartTime < time) { setFormalStartTime(null); setRawFormalStartTime(null) }
+    } else {
+      setRawFormalStartTime(time); setFormalStartTime(time)
+      setFormalStartLabel(firstBeatTime === null ? '' : nearestBeatPoint(time, firstBeatTime, bpm).label)
+    }
+    setBoundaryOffsets([]); setSelectedBoundaryIndex(0); setCurrentSegmentIndex(0); setMarkerOpen(false); setError('')
+    pauseAndSeek(time)
+    if (kind === 'dance') setSetupMode(false)
   }
 
   const handleLoadedMetadata = () => {
@@ -510,7 +518,7 @@ function App() {
     video.playbackRate = speed; video.volume = volume
     setOrientation(video.videoWidth === video.videoHeight ? 'square' : video.videoWidth > video.videoHeight ? 'landscape' : 'portrait')
     setDisplayMode('contain'); setSingleTeacherFraming(DEFAULT_TEACHER_FRAMING); setSplitTeacherFraming(DEFAULT_TEACHER_FRAMING)
-    setDuration(video.duration)
+    setDuration(Number.isFinite(video.duration) ? video.duration : 0)
     setError('')
   }
 
@@ -549,38 +557,24 @@ function App() {
   }
 
   const fitTeacherVideo = () => {
+    gestureRef.current.reset()
     if (!compareMode) setDisplayMode('contain')
     setCurrentTeacherFraming(() => DEFAULT_TEACHER_FRAMING)
   }
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    clickStartRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY }
-    if (!canPanTeacher) return
-    const bounds = getTeacherPanBounds(teacherFraming.zoom)
-    if (!bounds.x && !bounds.y) return
-    const visibleFraming = clampTeacherFraming(teacherFraming)
+    if (event.pointerType === 'mouse' && event.button !== 0) return
+    gestureRef.current.start(event.pointerId, event.clientX, event.clientY, clampTeacherFraming(teacherFraming))
     event.currentTarget.setPointerCapture(event.pointerId)
-    dragRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, panX: visibleFraming.panX, panY: visibleFraming.panY, moved: false }
   }
   const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    const drag = dragRef.current
-    if (!canPanTeacher || !drag || drag.pointerId !== event.pointerId) return
-    const moved = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) > 6
-    if (moved) drag.moved = true
-    setCurrentTeacherFraming((current) => ({
-      ...current,
-      panX: drag.panX + event.clientX - drag.startX,
-      panY: drag.panY + event.clientY - drag.startY,
-    }))
+    const framing = gestureRef.current.move(event.pointerId, event.clientX, event.clientY)
+    if (framing) setCurrentTeacherFraming(() => framing)
   }
   const handlePointerEnd = (event: React.PointerEvent<HTMLDivElement>) => {
-    const drag = dragRef.current
-    const clickStart = clickStartRef.current
-    dragRef.current = null
-    clickStartRef.current = null
+    const tap = gestureRef.current.end(event.pointerId, event.type === 'pointercancel')
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
-    const moved = drag?.moved || (clickStart ? Math.hypot(event.clientX - clickStart.startX, event.clientY - clickStart.startY) > 6 : true)
-    if (!moved) void togglePlayback()
+    if (tap) void togglePlayback()
   }
 
   useEffect(() => {
@@ -591,60 +585,26 @@ function App() {
     return () => observer.disconnect()
   }, [compareMode, isFullscreen, videoUrl])
 
-  const resnapFormalStart = (nextBpm: number, nextFirstBeat: number) => {
-    if (rawFormalStartTime === null) return
-    const snapped = nearestBeatPoint(rawFormalStartTime, nextFirstBeat, nextBpm)
-    setFormalCandidate({ time: snapped.time, label: snapped.label, delta: snapped.time - rawFormalStartTime })
-    if (formalStartTime !== null) { setFormalStartTime(Math.min(duration, Math.max(0, snapped.time))); setFormalStartLabel(snapped.label) }
-  }
   const applyBpm = () => {
     const next = Number(bpmInput)
     if (!Number.isFinite(next) || next < 40 || next > 240) { setBpmError(text('请输入 40–240 之间的 BPM。', 'Enter a BPM between 40 and 240.')); return }
-    setBpm(next); setBpmError(''); if (firstBeatTime !== null) resnapFormalStart(next, firstBeatTime)
-  }
-  const markFirstBeat = () => {
-    const time = videoRef.current?.currentTime ?? 0
-    setFirstBeatTime(time); setFirstBeatConfirmed(false); setCurrentTime(time)
-  }
-  const adjustFirstBeat = (beats: number) => {
-    if (firstBeatTime === null) return
-    const next = Math.min(duration, Math.max(0, firstBeatTime + beatDuration(bpm) * beats))
-    setFirstBeatTime(next); setFirstBeatConfirmed(false); pauseAndSeek(next)
-  }
-  const confirmFirstBeat = () => {
-    if (firstBeatTime === null) return
-    setFirstBeatConfirmed(true); resnapFormalStart(bpm, firstBeatTime)
-  }
-  const markFormalStart = () => {
-    if (firstBeatTime === null || !firstBeatConfirmed) { setError(text('请先标记并确认音乐起点。', 'Mark and confirm the music start first.')); return }
-    const raw = videoRef.current?.currentTime ?? 0
-    const snapped = nearestBeatPoint(raw, firstBeatTime, bpm)
-    const candidateTime = Math.min(duration, Math.max(0, snapped.time))
-    setRawFormalStartTime(raw); setFormalCandidate({ time: candidateTime, label: snapped.label, delta: snapped.time - raw }); pauseAndSeek(candidateTime)
-  }
-  const adjustFormalCandidate = (halfSteps: number) => {
-    if (!formalCandidate || firstBeatTime === null) return
-    const current = nearestBeatPoint(formalCandidate.time, firstBeatTime, bpm)
-    const next = beatPointAtStep(firstBeatTime, bpm, current.halfStep + halfSteps)
-    const candidateTime = Math.min(duration, Math.max(0, next.time))
-    setFormalCandidate({ time: candidateTime, label: next.label, delta: rawFormalStartTime === null ? 0 : next.time - rawFormalStartTime })
-    pauseAndSeek(candidateTime)
-  }
-  const confirmFormalStart = () => {
-    if (!formalCandidate) return
-    cancelPendingLoop(); setFormalStartTime(formalCandidate.time); setFormalStartLabel(formalCandidate.label); setBoundaryOffsets([])
-    setCurrentSegmentIndex(0); setRangeMode('current'); setSetupExpanded(false)
-    pauseAndSeek(formalCandidate.time)
+    analysisRef.current?.abort()
+    cancelPendingLoop(); videoRef.current?.pause()
+    setBpm(next); setBpmError(''); setTempoStatus('manual'); setConfirmedTempoMode('manual'); setTempoFailure(''); setBoundaryOffsets([]); setSelectedBoundaryIndex(0)
   }
   const selectPracticeRange = (mode: PracticeRangeMode) => {
     cancelPendingLoop(); setRangeMode(mode)
     const nextStart = getPracticeRange(mode, learningSegments, safeSegmentIndex, duration, bpm).startTime
-    if (videoRef.current) videoRef.current.currentTime = nextStart
+    if (videoRef.current) { videoRef.current.pause(); videoRef.current.currentTime = nextStart }
     setCurrentTime(nextStart)
   }
   const confirmSelectedBoundary = () => {
     const naturalBoundary = naturalLearningSegments[selectedBoundaryIndex]?.endTime
     if (naturalBoundary === undefined) return
+    const before = learningSegments[selectedBoundaryIndex].startTime
+    const after = learningSegments[selectedBoundaryIndex + 1]?.endTime ?? duration
+    if (currentTime <= before + .25 || currentTime >= after - .25) { setError(text('请选择相邻分界之间的位置。', 'Choose a position between the neighboring boundaries.')); return }
+    setError('')
     setBoundaryOffsets((current) => {
       const next = [...current]
       next[selectedBoundaryIndex] = currentTime - naturalBoundary
@@ -653,13 +613,13 @@ function App() {
   }
   const changeSpeed = (next: number) => {
     if (videoRef.current) videoRef.current.playbackRate = next
-    setSpeed(next); localStorage.setItem('adl-playback-speed', String(next))
+    setSpeed(next); safeStorage.setItem('adl-playback-speed', String(next))
   }
   const changeVolume = (event: ChangeEvent<HTMLInputElement>) => {
     const next = Number(event.target.value)
     if (videoRef.current) { videoRef.current.volume = next; if (next > 0) videoRef.current.muted = false }
     if (recordingAudioGainRef.current) recordingAudioGainRef.current.gain.value = videoRef.current?.muted ? 0 : next
-    setVolume(next); setIsMuted(next === 0); localStorage.setItem('adl-volume', String(next))
+    setVolume(next); setIsMuted(next === 0); safeStorage.setItem('adl-volume', String(next))
   }
   const toggleMute = () => {
     if (!videoRef.current) return
@@ -869,12 +829,18 @@ function App() {
   const startRecordingCountdown = useCallback(async () => {
     const video = videoRef.current
     const camera = cameraStreamRef.current
-    if (!videoUrl || !video || !compareMode || cameraStatus !== 'active' || !camera || !window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) {
+    if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) {
+      setRecordingError(text('当前浏览器不支持本地录像，请使用支持录像的浏览器。', 'Local recording is not supported by this browser. Try a supported browser.'))
+      updateRecordingStatus('error')
+      return
+    }
+    if (!videoUrl || !video || !compareMode || cameraStatus !== 'active' || !camera) {
       setRecordingError(text('请先载入视频并开启可用的摄像头对比。', 'Load a video and start camera comparison before recording.'))
       updateRecordingStatus('error')
       return
     }
     setRecordingError('')
+    setSetupMode(false); setMarkerOpen(false); setSettingsDrawerOpen(false)
     cancelPendingLoop()
     countdownRestoreRef.current = { time: video.currentTime, wasPlaying: !video.paused }
     video.pause()
@@ -974,22 +940,13 @@ function App() {
     </div>
   )
 
-  const rangeControl = (label = true) => (
-    <label className="practice-range-select">{label && text('练习范围', 'Practice range')}
-      <select value={rangeMode} onChange={(event) => selectPracticeRange(event.target.value as PracticeRangeMode)}>
-        <option value="current">{text('当前段', 'Current section')}</option>
-        <option value="previous-current" disabled={safeSegmentIndex === 0}>{text('上一段＋当前段', 'Previous + current')}</option>
-        <option value="from-start">{text('第1段到当前段', 'Section 1 to current')}</option>
-      </select>
-    </label>
-  )
 
   const visibleTeacherFraming = clampTeacherFraming(teacherFraming)
 
   if (showLanding) return <LandingPage onStart={() => setShowLanding(false)} language={language} setLanguage={setLanguage} />
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell${videoUrl ? ' has-video' : ''}`}>
       <header className="app-header">
         <button type="button" className="workspace-brand" onClick={() => { stopCamera(); setShowLanding(true) }} aria-label={text('返回帧琢首页', 'Return to the FrameTune home page')}><strong>帧琢</strong><span>FrameTune</span><small>{text('测试版', 'Beta')}</small></button>
         <div className="workspace-header-tools"><p className="workspace-tagline">{text('逐帧精练，雕琢姿态', 'Refine every move, frame by frame.')}</p><div className="workspace-language" aria-label="Language"><button type="button" className={language === 'zh' ? 'active' : ''} onClick={() => setLanguage('zh')}>中文</button><span>/</span><button type="button" className={language === 'en' ? 'active' : ''} onClick={() => setLanguage('en')}>EN</button></div></div>
@@ -998,10 +955,10 @@ function App() {
         {!videoUrl ? (
           <label className="upload-panel"><span className="upload-icon">＋</span><strong>{text('选择舞蹈视频', 'Choose a dance video')}</strong><span>{text('MP4、MOV 或 WebM · 文件保留在本机', 'MP4, MOV, or WebM · stays on this device')}</span><input type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" onChange={handleFileChange} /></label>
         ) : <>
-          <div ref={playerRef} className={`player-frame ${orientation}${compareMode ? ' comparing' : ''}`}>
+          <div ref={playerRef} className={`player-frame practice-player ${orientation}${compareMode ? ' comparing' : ''}${isFullscreen ? ' is-immersive' : ''}`}>
             <div className={`video-stage${compareMode ? ' compare-mode' : ''}`}>
               <div ref={videoStageRef} className={`teacher-video-panel${canPanTeacher ? ' draggable-stage' : ''}`}
-                onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerEnd} onPointerCancel={handlePointerEnd}>
+                onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerEnd} onPointerCancel={handlePointerEnd} onLostPointerCapture={event => { gestureRef.current.end(event.pointerId, true) }}>
                 <video key={videoUrl} ref={videoRef} className={`${orientation}${canPanTeacher ? ' draggable-video' : ''}`}
                   style={{
                     objectFit: renderDisplayMode,
@@ -1023,84 +980,50 @@ function App() {
             </div>
             <canvas ref={recordingCanvasRef} className="recording-canvas" aria-hidden="true" />
             <div className="video-quick-controls" aria-label={text('练习准备', 'Practice preparation')}>
-              {teacherFramingControls()}
-              <button type="button" title={text('同时显示本机摄像头，不录制或上传', 'Show your local camera without recording or uploading')} className={compareMode ? 'active' : ''} onClick={toggleCompareMode}>{compareMode ? text('关闭摄像头', 'Turn camera off') : text('摄像头对比', 'Compare with camera')}</button>
+              <button type="button" className={isMirrored ? 'active' : ''} aria-pressed={isMirrored} onClick={toggleMirror}>{text('镜像', 'Mirror')}</button>
+              <button type="button" aria-label={compareMode ? text('关闭摄像头', 'Turn camera off') : text('摄像头对比', 'Compare with camera')} aria-pressed={compareMode} title={text('同时显示本机摄像头，不录制或上传', 'Show your local camera without recording or uploading')} className={compareMode ? 'active' : ''} onClick={toggleCompareMode}>{text('摄像头', 'Camera')}</button>
               {compareMode && cameraStatus === 'active' && recordingStatus !== 'recording' && recordingStatus !== 'processing' && <button type="button" className="record-button" disabled={recordingStatus === 'countdown'} onClick={() => void startRecordingCountdown()}>{recordingStatus === 'countdown' ? text('倒计时中', 'Counting down') : text('开始录制', 'Record')}</button>}
               {recordingStatus === 'recording' && <button type="button" className="stop-record-button" onClick={stopRecording}>{text('停止录制', 'Stop')}</button>}
               {recordingUrl && !reviewOpen && <button type="button" onClick={() => setReviewOpen(true)}>{text('查看录像', 'Review recording')}</button>}
-              <button type="button" onClick={() => setSettingsDrawerOpen(true)}>{text('准备设置', 'Practice setup')}</button>
+              <button type="button" aria-expanded={settingsDrawerOpen} onClick={() => { setSettingsDrawerOpen(value => !value); setMenuPage('main') }}>{text('菜单', 'Menu')}</button>
+              <button type="button" aria-label={isFullscreen ? text('退出全屏', 'Exit fullscreen') : text('进入全屏', 'Enter fullscreen')} onClick={() => void toggleFullscreen()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5" /></svg></button>
             </div>
-            <div className="timeline-row"><span>{formatTime(currentTime)}</span><input aria-label={text('视频进度', 'Video timeline')} type="range" min="0" max={duration || 0} step="0.01" value={Math.min(currentTime, duration || 0)} onChange={(event) => { const nextTime = Number(event.target.value); cancelPendingLoop(); if (videoRef.current) videoRef.current.currentTime = nextTime; setCurrentTime(nextTime) }} /><span>{formatTime(duration)}</span></div>
-            <div className="fullscreen-status">{text(`第 ${safeSegmentIndex + 1} 段`, `Section ${safeSegmentIndex + 1}`)} · {playbackMode === 'loop' ? text('循环练习', 'Loop practice') : text('连续播放', 'Continuous play')} · {speed}×</div>
-            <aside className="fullscreen-sidebar right practice-only">
-              <label>{text('速度', 'Speed')}<select value={speed} onChange={(event) => changeSpeed(Number(event.target.value))}>{SPEEDS.map((value) => <option key={value} value={value}>{value}×</option>)}</select></label>
-              <button type="button" disabled={safeSegmentIndex === 0} onClick={() => changeSegment(safeSegmentIndex - 1)}>{text('上一段', 'Previous')}</button>
-              <button type="button" disabled={safeSegmentIndex === learningSegments.length - 1} onClick={() => changeSegment(safeSegmentIndex + 1)}>{text('下一段', 'Next')}</button>
-              {rangeControl(false)}
-              <button type="button" onClick={() => void togglePlayback()}>{isLoopWaiting ? text('取消等待', 'Cancel wait') : isPlaying ? text('暂停', 'Pause') : text('播放', 'Play')}</button>
-              <button type="button" onClick={() => void toggleFullscreen()}>{text('退出全屏', 'Exit fullscreen')}</button>
-            </aside>
-          </div>
-
-          <div ref={practiceControlsRef} className="practice-controls">
-            <button type="button" onClick={() => seekBy(-2)}>{text('回看 2 秒', 'Back 2 seconds')}</button>
-            <button type="button" disabled={!learningSegments.length || safeSegmentIndex === 0} onClick={() => changeSegment(safeSegmentIndex - 1)}>{text('上一段', 'Previous section')}</button>
-            <button type="button" className="play-button" onClick={() => void togglePlayback()}>{isLoopWaiting ? text('取消循环等待', 'Cancel loop wait') : isPlaying ? text('暂停', 'Pause') : text('播放', 'Play')}</button>
-            <button type="button" disabled={!learningSegments.length || safeSegmentIndex === learningSegments.length - 1} onClick={() => changeSegment(safeSegmentIndex + 1)}>{text('下一段', 'Next section')}</button>
-            <button type="button" onClick={() => seekBy(2)}>{text('前进 2 秒', 'Forward 2 seconds')}</button>
-          </div>
-
-          <div className="file-row"><div><strong>{fileName}</strong><span>{formatFileSize(fileSize)} · {formatTime(duration)}</span></div><label className="replace-button">{text('更换视频', 'Replace video')}<input type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" onChange={handleFileChange} /></label></div>
-
-          {settingsDrawerOpen && <div className="drawer-backdrop">
-            <aside ref={settingsDrawerRef} className="settings-drawer" role="dialog" aria-modal="true" aria-label={text('练习设置', 'Practice settings')}>
-              <div className="drawer-header"><div><p className="panel-kicker">PREPARE</p><h2>{text('练习准备', 'Practice setup')}</h2></div><button type="button" className="drawer-close" aria-label={text('关闭练习准备', 'Close practice setup')} onClick={() => setSettingsDrawerOpen(false)}>×</button></div>
-
-              <section className={`setup-panel drawer-setup ${setupExpanded ? 'open' : ''}`}>
-                <button type="button" className="setup-toggle" onClick={() => setSetupExpanded((value) => !value)}>{text('1. 音乐与动作起点', '1. Music and dance starts')} <span>{setupExpanded ? text('收起', 'Collapse') : text('展开', 'Expand')}</span></button>
-                {setupExpanded && <div className="setup-grid">
-                  <p className="setup-current-time">{text('视频位置：', 'Video position: ')}<strong>{currentTime.toFixed(2)}s</strong></p>
-                  <div className="setup-block"><strong>{text('音乐起点', 'Music start')}</strong><p>{text('到音乐第一拍时标记并确认。', 'At the first music beat, mark and confirm.')}</p><div className="inline-controls"><input id="bpm-input" aria-label={text('每分钟节拍数', 'Beats per minute')} type="number" min="40" max="240" value={bpmInput} onChange={(event) => setBpmInput(event.target.value)} /><button type="button" onClick={applyBpm}>{text('应用 BPM', 'Apply BPM')}</button></div>{bpmError && <span className="field-error">{bpmError}</span>}<button type="button" className="accent-button" onClick={markFirstBeat}>{text('标记当前位置', 'Mark position')}</button>{firstBeatTime !== null && <span className="setting-result">{firstBeatConfirmed ? text('已确认：', 'Confirmed: ') : text('待确认：', 'Ready: ')}{firstBeatTime.toFixed(2)}s</span>}<div className="mini-buttons"><button type="button" disabled={firstBeatTime === null} onClick={() => adjustFirstBeat(-0.5)}>{text('前半拍', 'Back ½')}</button><button type="button" disabled={firstBeatTime === null} onClick={() => adjustFirstBeat(.5)}>{text('后半拍', 'Forward ½')}</button><button type="button" className="confirm-button" disabled={firstBeatTime === null || firstBeatConfirmed} onClick={confirmFirstBeat}>{text('确认', 'Confirm')}</button></div></div>
-                  <div className="setup-block"><strong>{text('动作起点', 'Dance start')}</strong><p>{text('到正式动作开始时标记并确认。', 'At the first dance move, mark and confirm.')}</p><button type="button" className="accent-button" disabled={!firstBeatConfirmed} onClick={markFormalStart}>{text('标记当前位置', 'Mark position')}</button>{formalCandidate && <div className="candidate-result"><b>{text('吸附到', 'Snapped to')} {formalCandidate.label}</b><span>{formalCandidate.time.toFixed(2)}s</span></div>}<div className="mini-buttons"><button type="button" disabled={!formalCandidate} onClick={() => adjustFormalCandidate(-1)}>{text('前半拍', 'Back ½')}</button><button type="button" disabled={!formalCandidate} onClick={() => adjustFormalCandidate(1)}>{text('后半拍', 'Forward ½')}</button><button type="button" className="confirm-button" disabled={!formalCandidate} onClick={confirmFormalStart}>{text('确认', 'Confirm')}</button></div>{formalStartTime !== null && <span className="setting-result">{text('已确认：', 'Confirmed: ')}{formalStartTime.toFixed(2)}s</span>}</div>
-                </div>}
-              </section>
-
-              <section className={`drawer-section custom-sections ${customSectionsOpen ? 'open' : ''}`}><button type="button" className="custom-sections-toggle" onClick={() => setCustomSectionsOpen((value) => !value)}>{text('自定义分段', 'Custom sections')}<span>{customSectionsOpen ? text('收起', 'Collapse') : text('展开', 'Expand')}</span></button>{customSectionsOpen && (learningSegments.length > 1 ? <div className="custom-sections-body"><p>{text('选择分界，拖动视频进度条，再确认当前位置。', 'Choose a boundary, move the video timeline, then confirm the current position.')}</p><label>{text('要调整的分界', 'Boundary')}<select value={selectedBoundaryIndex} onChange={(event) => { const index = Number(event.target.value); setSelectedBoundaryIndex(index); pauseAndSeek(learningSegments[index].endTime) }}>{naturalLearningSegments.slice(0, -1).map((segment, index) => <option key={segment.segmentIndex} value={index}>{text(`第 ${index + 1}／${index + 2} 段`, `Sections ${index + 1}/${index + 2}`)}</option>)}</select></label><strong>{text('当前位置：', 'Current position: ')}{currentTime.toFixed(2)}s</strong><button type="button" className="confirm-button" onClick={confirmSelectedBoundary}>{text('确认此处分段', 'Confirm boundary here')}</button><button type="button" onClick={() => setBoundaryOffsets((current) => { const next = [...current]; next[selectedBoundaryIndex] = 0; return next })}>{text('恢复自动分界', 'Restore automatic boundary')}</button></div> : <div className="custom-sections-body"><p>{text('请先确认音乐起点和动作起点，系统生成至少两段后即可自定义。', 'Confirm the music and dance starts first. Custom boundaries are available after at least two sections are created.')}</p></div>)}</section>
-
-              {learningSegments.length > 0 ? <section className="drawer-section">
-                <h3>{text('学习段', 'Practice sections')}</h3>
-                <strong>{text(`第 ${safeSegmentIndex + 1} 段`, `Section ${safeSegmentIndex + 1}`)} · {learningSegments[safeSegmentIndex].startBeat} → {learningSegments[safeSegmentIndex].endBeat}</strong>
-                <div className="segment-list">{learningSegments.map((segment, index) => <button type="button" key={segment.segmentIndex} className={safeSegmentIndex === index ? 'active' : ''} onClick={() => changeSegment(index)}>{text(`第 ${segment.segmentIndex} 段`, `Section ${segment.segmentIndex}`)}{segment.incomplete ? text(' · 不足 8 拍', ' · under 8 beats') : ''}</button>)}</div>
-                <p className="framing-hint">{text('第1段会自动带上系统计算出的预备拍。', 'Section 1 automatically includes the calculated preparation lead-in.')}</p>
-              </section> : <p className="drawer-empty">{text('完成节拍与正式起点设置后，将在这里生成学习段。', 'Practice sections appear here after you set the beat and choreography start.')}</p>}
-
-              {learningSegments.length > 0 && <>
-                <section className="drawer-section">{rangeControl()}</section>
-                <section className="drawer-section"><h3>{text('播放模式', 'Playback mode')}</h3><div className="playback-mode-buttons"><button type="button" className={playbackMode === 'loop' ? 'active' : ''} onClick={() => changePlaybackMode('loop')}>{text('循环练习 · 停 2 秒', 'Loop · pause 2 seconds')}</button><button type="button" className={playbackMode === 'continuous' ? 'active' : ''} onClick={() => changePlaybackMode('continuous')}>{text('连续播放', 'Continuous play')}</button></div></section>
+            <PracticeDock language={language} expanded={dockExpanded} onExpanded={setDockExpanded} speed={speed} speeds={SPEEDS} onSpeed={changeSpeed}
+              sections={learningSegments} selected={safeSegmentIndex} rangeMode={rangeMode} onRange={selectPracticeRange} onSection={changeSegment} playing={isPlaying} waiting={isLoopWaiting} onPlay={() => void togglePlayback()}
+              hint={dockHint} onDismissHint={() => { setDockHint(false); safeStorage.setItem('adl-dock-hint', 'dismissed') }}
+              timeline={<>
+                {setupMode && <div className="marker-setup"><span role="status">{setupStep === 'music' ? text('1. 移动进度条，确认音乐起点。', '1. Seek, then confirm Music start.') : text('2. 移到动作开始处，确认动作起点。', '2. Seek to the first move; confirm Dance start.')}</span><button type="button" onClick={() => { setSetupMode(false); setMarkerOpen(false) }}>{text('退出设置', 'Exit setup')}</button></div>}
+                <div className="start-markers">{(setupMode || firstBeatConfirmed) && <><span>{text('音乐', 'Music')} {firstBeatConfirmed && firstBeatTime !== null ? firstBeatTime.toFixed(2) + 's' : '—'}</span><span>{text('动作', 'Dance')} {formalStartTime === null ? '—' : formalStartTime.toFixed(2) + 's'}</span></>}<span className="tempo-state" role="status">{tempoStatus === 'editing' ? text('请确认BPM', 'Confirm BPM') : tempoStatus === 'analyzing' ? text('识别BPM中…', 'Detecting BPM…') : tempoStatus === 'unavailable' ? text('未识别BPM · 菜单可重试', 'BPM not detected · Retry in menu') : text(tempoStatus === 'auto' ? '自动 ' : '手动 ', tempoStatus === 'auto' ? 'Auto ' : 'Manual ') + bpm + ' BPM'}</span></div>
+                <div className="timeline-row"><span>{setupMode || menuPage === 'custom' ? currentTime.toFixed(2) : formatTime(currentTime)}</span><input aria-label={text('视频进度', 'Video timeline')} type="range" min="0" max={duration || 0} step="0.01" value={Math.min(currentTime, duration || 0)} onChange={event => { pauseAndSeek(Number(event.target.value)); if (setupMode) setMarkerOpen(true) }} onPointerUp={() => { if (setupMode) setMarkerOpen(true) }} /><span>{formatTime(duration)}</span></div>
+                {setupMode && markerOpen && <div className="marker-options" aria-label={text('标记起点', 'Mark a start')}><button type="button" onClick={() => markTimelineStart('music')}>{text('音乐起点', 'Music start')}</button><button type="button" disabled={setupStep !== 'dance'} onClick={() => markTimelineStart('dance')}>{text('动作起点', 'Dance start')}</button></div>}
+                {error && <p className="dock-error" role="alert">{error}</p>}
+                {recordingError && <p className="dock-error" role="alert">{recordingError}</p>}
+                {recordingAudioNotice && <p className="dock-notice" role="status">{recordingAudioNotice}</p>}
+                {recordingStatus === 'processing' && <p className="dock-notice" role="status">{text('正在生成录像…', 'Preparing recording…')}</p>}
               </>}
+              menu={settingsDrawerOpen && <section ref={settingsDrawerRef} className="compact-menu" aria-label={text('练习菜单', 'Practice menu')}>
+                <div className="compact-menu-header"><strong>{menuPage === 'main' ? text('菜单', 'Menu') : menuPage === 'tempo' ? text('节拍校准', 'Beat calibration') : menuPage === 'custom' ? text('自定义分段', 'Custom sections') : menuPage === 'recording' ? text('录像设置', 'Recording settings') : menuPage === 'sound' ? text('声音', 'Sound') : menuPage === 'view' ? text('画面', 'View') : text('使用说明', 'Help')}</strong><button type="button" onClick={() => menuPage === 'main' ? setSettingsDrawerOpen(false) : setMenuPage('main')}>{menuPage === 'main' ? text('关闭', 'Close') : text('返回', 'Back')}</button></div>
+                {menuPage === 'main' && <div className="compact-menu-items">
+                  <button type="button" onClick={() => { cancelPendingLoop(); videoRef.current?.pause(); setSetupMode(true); setSetupStep('music'); setMarkerOpen(false); setSettingsDrawerOpen(false); setMenuPage('main') }}>{text('练习设置', 'Practice setup')}</button>
+                  <button type="button" onClick={() => setMenuPage('tempo')}>{text('节拍校准', 'Beat calibration')}{tempoStatus === 'unavailable' ? ' · !' : ''}</button>
+                  <button type="button" onClick={() => { setMenuPage('custom'); setSetupMode(false); if (learningSegments.length > 1) pauseAndSeek(learningSegments[selectedBoundaryIndex]?.endTime ?? learningSegments[0].endTime) }}>{text('自定义分段', 'Custom sections')}</button>
+                  <button type="button" onClick={() => setMenuPage('sound')}>{text('声音', 'Sound')}</button>
+                  <button type="button" onClick={() => setMenuPage('recording')}>{text('录像设置', 'Recording settings')}</button>
+                  <button type="button" onClick={() => setMenuPage('view')}>{text('画面', 'View')}</button>
+                  <button type="button" onClick={() => changePlaybackMode(playbackMode === 'loop' ? 'continuous' : 'loop')}>{playbackMode === 'loop' ? text('循环 · 停2秒', 'Repeat · 2s rest') : text('播放一次', 'Play once')}</button>
+                  <label className="button-link">{text('更换视频', 'Replace video')}<input type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" disabled={recordingStatus === 'recording' || recordingStatus === 'countdown' || recordingStatus === 'processing'} onChange={handleFileChange} /></label>
+                  <button type="button" onClick={() => setMenuPage('help')}>{text('使用说明', 'Help')}</button>
+                </div>}
+                {menuPage === 'tempo' && <div className="compact-menu-body"><p role="status">{tempoStatus === 'editing' ? text('确认输入的BPM。', 'Confirm your BPM.') : tempoStatus === 'analyzing' ? text('正在本机分析音乐。', 'Analyzing music on this device.') : tempoStatus === 'auto' ? text('已自动识别BPM；不准确时可校准。', 'BPM detected. Adjust if needed.') : tempoStatus === 'unavailable' ? tempoFailure === 'large-file' ? text('视频超过150MB，暂不能本机分析。', 'Video exceeds 150MB; local analysis unavailable.') : tempoFailure === 'unsupported-audio' ? text('无法读取视频声音，可换视频重试。', 'Cannot read audio. Try another video.') : tempoFailure === 'analysis-timeout' ? text('分析超时，请重新分析。', 'Analysis timed out. Try again.') : tempoFailure === 'unstable' ? text('未找到稳定BPM，可重试或手动校准。', 'No stable BPM. Retry or calibrate manually.') : text('分析未完成，请重新分析。', 'Analysis could not finish. Try again.') : text('当前使用已保存或手动节拍。', 'Using saved or manual tempo.')}</p><div className="inline-controls"><input aria-label={text('每分钟节拍数', 'Beats per minute')} placeholder="BPM" type="number" min="40" max="240" value={bpmInput} onChange={event => { analysisRef.current?.abort(); cancelPendingLoop(); videoRef.current?.pause(); setBpmInput(event.target.value); setBpmError(''); setTempoStatus('editing'); setTempoFailure('') }} /><button type="button" disabled={!bpmInput} onClick={applyBpm}>{text('确认', 'Confirm')}</button><button type="button" disabled={tempoStatus === 'analyzing'} onClick={() => { if (fileRef.current) runTempoAnalysis(fileRef.current, bpm) }}>{text('重新分析', 'Analyze again')}</button></div>{bpmError && <p role="alert">{bpmError}</p>}</div>}
+                {menuPage === 'custom' && <div className="compact-menu-body">{learningSegments.length > 1 ? <><div className="inline-controls"><select aria-label={text('分界', 'Boundary')} value={Math.min(selectedBoundaryIndex, learningSegments.length - 2)} onChange={event => { const index = Number(event.target.value); setSelectedBoundaryIndex(index); pauseAndSeek(learningSegments[index].endTime) }}>{learningSegments.slice(0, -1).map((segment, index) => <option value={index} key={segment.segmentIndex}>{index + 1} / {index + 2}</option>)}</select><button type="button" className="confirm-button" onClick={confirmSelectedBoundary}>{text('确认此处分段', 'Set boundary here')}</button><button type="button" onClick={() => setBoundaryOffsets(current => { const next = [...current]; next[selectedBoundaryIndex] = 0; return next })}>{text('恢复自动', 'Restore auto')}</button></div><p>{text('拖动下面进度条，再确认。', 'Seek below, then confirm.')}</p></> : <p>{text('先标记音乐与动作起点，生成至少两段。', 'Mark both starts to create at least two sections.')}</p>}</div>}
+                {menuPage === 'sound' && <div className="compact-menu-body inline-controls"><button type="button" onClick={toggleMute}>{isMuted || volume === 0 ? text('取消静音', 'Unmute') : text('静音', 'Mute')}</button><input aria-label={text('音量', 'Volume')} type="range" min="0" max="1" step=".05" value={volume} onChange={changeVolume} /></div>}
+                {menuPage === 'view' && <div className="compact-menu-body">{teacherFramingControls()}<p>{text('双指缩放，放大后拖动。重置恢复完整画面、默认大小和居中。', 'Pinch to zoom; drag to move. Reset restores full view, default size and center.')}</p></div>}
+                {menuPage === 'recording' && <div className="compact-menu-body"><label>{text('倒计时', 'Countdown')} <select aria-label={text('录制倒计时', 'Recording countdown')} value={countdownSeconds} disabled={recordingStatus === 'countdown' || recordingStatus === 'recording'} onChange={event => setCountdownSeconds(Number(event.target.value) as 3 | 5 | 10)}>{[3,5,10].map(value => <option key={value} value={value}>{value}s</option>)}</select></label><p>{text('只录老师声音，不录麦克风；录像不上传。', 'Teacher audio only. No microphone, no uploads.')}</p>{recordingAudioNotice && <p role="status">{recordingAudioNotice}</p>}{recordingError && <p role="alert">{recordingError}</p>}</div>}
+                {menuPage === 'help' && <div className="compact-menu-body"><p>{text('练习设置：拖进度条，先确认音乐起点，再确认动作起点，不用重开菜单。自动按八拍分段，第1段带预备拍。单段选3只练第3段；累加选3练第1–3段。箭头收起或展开段号。', 'Setup: seek and confirm Music start, then Dance start without reopening the menu. Auto sections use eight beats; section 1 includes preparation. Single + 3 practices section 3. Build-up + 3 practices 1–3. The arrow folds or opens section numbers.')}</p><p>{text('导入后自动识别音乐BPM，不识别动作。音乐不稳定时可重新分析或校准。', 'BPM is detected on import, not dance moves. Retry or calibrate if the rhythm is unclear.')}</p><p title={fileName}>{fileName} · {formatFileSize(fileSize)}</p></div>}
+              </section>}
+            />
+          </div>
 
-              <section className="drawer-section"><h3>{text('播放速度', 'Playback speed')}</h3><div className="segmented">{SPEEDS.map((value) => <button type="button" key={value} className={speed === value ? 'active' : ''} onClick={() => changeSpeed(value)}>{value}×</button>)}</div></section>
-              <section className="drawer-section"><h3>{text('教师画面', 'Teacher view')}</h3>{teacherFramingControls()}<p className="framing-hint">{text('重置会恢复完整显示、默认大小和居中位置。放大后可直接拖动教师画面；拖动不会误触播放或暂停。', 'Reset restores the full view, default size, and centered position. Drag the teacher video after zooming; dragging will not toggle playback.')}</p></section>
-              <section className="drawer-section"><h3>{text('声音', 'Sound')}</h3><div className="drawer-control-grid">
-                <button type="button" onClick={toggleMute}>{isMuted || volume === 0 ? text('取消静音', 'Unmute') : text('静音', 'Mute')}</button>
-              </div><input aria-label={text('音量', 'Volume')} type="range" min="0" max="1" step="0.05" value={volume} onChange={changeVolume} /></section>
-
-              <section className="drawer-section recording-setup"><h3>{text('本地练习录像', 'Local practice recording')}</h3>
-                <p>{text('练习录像包含老师视频的声音，不会录制麦克风或环境声音。录像不会上传。', 'Practice recordings include the teacher video audio. Microphone and room audio are not recorded. Recordings are not uploaded.')}</p>
-                {recordingAudioNotice && <span className="recording-audio-notice" role="status">{recordingAudioNotice}</span>}
-                <label>{text('开始前倒计时', 'Countdown before recording')}<select value={countdownSeconds} onChange={(event) => setCountdownSeconds(Number(event.target.value) as 3 | 5 | 10)} disabled={recordingStatus === 'countdown' || recordingStatus === 'recording' || recordingStatus === 'processing'}><option value="3">3 {text('秒', 'seconds')}</option><option value="5">5 {text('秒', 'seconds')}</option><option value="10">10 {text('秒', 'seconds')}</option></select></label>
-                <div className="recording-actions">
-                  {recordingStatus !== 'recording' && <button type="button" disabled={!videoUrl || !compareMode || cameraStatus !== 'active' || recordingStatus === 'countdown' || recordingStatus === 'processing'} onClick={() => void startRecordingCountdown()}>{recordingStatus === 'processing' ? text('正在生成回看…', 'Preparing review…') : text('开始录制', 'Start recording')}</button>}
-                  {recordingStatus === 'recording' && <button type="button" className="stop-record-button" onClick={stopRecording}>{text('停止录制', 'Stop recording')}</button>}
-                  {recordingStatus === 'countdown' && <button type="button" onClick={cancelCountdown}>{text('取消倒计时', 'Cancel countdown')}</button>}
-                  {recordingUrl && !reviewOpen && <button type="button" onClick={() => setReviewOpen(true)}>{text('查看录像', 'Review recording')}</button>}
-                </div>
-                {recordingStatus === 'recording' && <strong className="recording-time">● {text('录制中', 'Recording')} {formatTime(recordingElapsed)}</strong>}
-                {recordingError && <span className="field-error">{recordingError}</span>}
-              </section>
-
-            </aside>
-          </div>}
           {recordingUrl && reviewOpen && <div className="recording-review-backdrop" role="presentation">
             <section className="recording-review" role="dialog" aria-modal="true" aria-labelledby="recording-review-title">
               <header><div><p className="panel-kicker">LOCAL REVIEW</p><h2 id="recording-review-title">{text('练习录像回看', 'Practice recording review')}</h2></div><button type="button" className="review-close" aria-label={text('关闭回放', 'Close Review')} onClick={closeReviewToPractice}>×</button></header>
@@ -1112,8 +1035,7 @@ function App() {
             </section>
           </div>}
         </>}
-        {error && <p className="error-message" role="alert">{error}</p>}
-        <p className="shortcut-hint"><strong>{text('快捷键', 'Shortcuts')}</strong>{text('Space 播放/暂停 · ←/→ 2 秒 · ↑/↓ 切段 · M 镜像 · L 循环/连续 · F 全屏', 'Space play/pause · ←/→ 2 seconds · ↑/↓ change section · M mirror · L loop/continuous · F fullscreen')}</p>
+        {!videoUrl && error && <p className="error-message" role="alert">{error}</p>}
       </section>
     </main>
   )

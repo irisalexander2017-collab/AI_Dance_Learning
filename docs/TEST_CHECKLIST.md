@@ -1,5 +1,20 @@
 # Test Checklist
 
+## Current work — 2026-10-11 mobile practice
+
+Latest full regression evidence is in [PRACTICE_SETUP_TEST_REPORT.md](PRACTICE_SETUP_TEST_REPORT.md); BPM evidence is in [BPM_AUTO_TEST_REPORT.md](BPM_AUTO_TEST_REPORT.md), and earlier mobile evidence is in [MOBILE_PRACTICE_TEST_REPORT.md](MOBILE_PRACTICE_TEST_REPORT.md). The older phase checklists below are historical records, not claims about every current browser/device.
+
+- [x] Fixed dock stays in view at 320×568, 390×844, 844×390 and 1280×800; both languages are readable with no page-width overflow.
+- [x] Separate section row folds/opens manually; selection does not close it. Single N and Build-up 1–N use the correct start, including preparation.
+- [x] Timeline setup confirms Music then Dance without reopening Menu; saved starts do not skip a step or disappear on entry. Invalid Dance starts leave setup open and recover after correction. Custom boundaries are optional in Menu and cannot cross adjacent boundaries.
+- [x] Automatic local BPM detects known40–240 tempos, Fine China at103.9 and the failing She goes by clip at147.3 (146 reference, tolerance under2). Three-beat bass motifs, ambiguous non-octave candidates and insufficient audible-window support have regression tests. Silence, tones and noise remain rejected; old default settings, unknown-tempo and same-tempo boundary behavior pass.
+- [x] Calibration drafts cannot be overwritten by analysis or replace confirmed mode/section on refresh. Full read/decode/compute timeout and cancellation leave practice controls usable.
+- [x] Pinch and drag do not toggle playback; native timeline clicks and video taps work in real Chrome.
+- [x] Camera, countdown cancellation, fullscreen recording/review, audible teacher audio, WebM download, deletion and record-again cancellation pass in Chrome using its test camera.
+- [x] Both production build modes pass; final root-path and GitHub Pages regressions each passed all 28 browser tests with no skips; 31 logic tests pass with the real regression clip included. Calibration persistence tests assert saved values before refreshing.
+- [x] Real local dance video playback/analysis completes with no external upload requests; malformed or blocked local storage does not crash practice.
+- [ ] Physical mobile Safari/Chrome and real camera hardware compatibility across devices.
+
 ## Phase 0
 
 - [x] Backend starts without errors.

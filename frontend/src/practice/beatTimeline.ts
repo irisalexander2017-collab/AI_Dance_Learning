@@ -60,6 +60,7 @@ export function activeBeatPoint(time: number, firstBeatTime: number, bpm: number
 }
 
 export function buildLearningSegments(duration: number, formalStartTime: number, firstBeatTime: number, bpm: number) {
+  if (![duration, formalStartTime, firstBeatTime, bpm].every(Number.isFinite) || duration <= 0 || bpm <= 0) return []
   const segmentDuration = beatDuration(bpm) * 8
   const segments: LearningSegment[] = []
   let startTime = Math.max(0, formalStartTime)
@@ -83,10 +84,14 @@ export function buildLearningSegments(duration: number, formalStartTime: number,
 
 export function applyBoundaryOffsets(segments: LearningSegment[], offsets: number[], firstBeatTime: number, bpm: number) {
   if (segments.length < 2) return segments
-  const boundaries = segments.slice(0, -1).map((segment, index) => {
-    const previous = index === 0 ? segments[0].startTime : segments[index - 1].endTime + (offsets[index - 1] ?? 0)
-    const next = segments[index + 1].endTime + (offsets[index + 1] ?? 0)
-    return Math.min(next - 0.25, Math.max(previous + 0.25, segment.endTime + (offsets[index] ?? 0)))
+  const boundaries: number[] = []
+  const lastEnd = segments[segments.length - 1].endTime
+  const gap = Math.min(.25, (lastEnd - segments[0].startTime) / (segments.length * 2))
+  segments.slice(0, -1).forEach((segment, index) => {
+    const previous = index === 0 ? segments[0].startTime : boundaries[index - 1]
+    const latest = lastEnd - gap * (segments.length - 1 - index)
+    const offset = Number.isFinite(offsets[index]) ? offsets[index] : 0
+    boundaries.push(Math.min(latest, Math.max(previous + gap, segment.endTime + offset)))
   })
   return segments.map((segment, index) => {
     const startTime = index === 0 ? segment.startTime : boundaries[index - 1]

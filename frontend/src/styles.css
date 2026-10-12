@@ -199,3 +199,76 @@ button:focus-visible, a:focus-visible { outline: 2px solid #edd18c; outline-offs
   .cover-controls { right: 12px; left: 12px; justify-content: space-between; gap: 8px; padding-left: 12px; }.guide-button { padding-right: 7px; }
   .usage-guide { width: 100%; padding: 25px 22px 36px; }.usage-guide h2 { font-size: 1.5rem; }.usage-guide li { grid-template-columns: 34px 1fr; gap: 10px; padding: 18px 0; }
 }
+/* Mobile-first practice workspace: controls stay outside the zoomable video. */
+.practice-player.is-immersive { position: fixed; inset: 0; z-index: 40; border-radius: 0; }
+.app-shell.has-video { height: 100dvh; min-height: 0; padding: 4px 12px 0; display: flex; flex-direction: column; overflow: hidden; }
+.has-video .app-header { flex: none; height: 42px; margin-bottom: 4px; flex-direction: row; align-items: center; gap: 12px; }
+.has-video .workspace-header-tools { width: auto; }
+.has-video .workspace-tagline, .has-video .workspace-brand small { display: none; }
+.has-video .workspace-brand strong { font-size: 1.2rem; }
+.has-video .workspace-brand span { font-size: .62rem; }
+.has-video .workspace { flex: 1; min-height: 0; padding: 0; display: flex; flex-direction: column; border-radius: 12px 12px 0 0; }
+.player-frame.practice-player, .player-frame.practice-player:fullscreen { flex: 1; min-height: 0; width: 100%; height: 100%; display: flex; flex-direction: column; border-radius: 10px 10px 0 0; }
+.practice-player .video-stage, .practice-player:fullscreen .video-stage { position: relative; flex: 1; min-height: 0; height: auto; }
+.practice-player .teacher-video-panel { touch-action: none; user-select: none; }
+.practice-player .video-quick-controls, .practice-player:fullscreen .video-quick-controls { display: flex; top: 6px; right: 6px; gap: 3px; padding: 3px; max-width: calc(100% - 12px); }
+.practice-player .video-quick-controls button { min-height: 36px; padding: 5px 8px; font-size: .72rem; }
+.practice-player svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.practice-dock { position: relative; flex: none; padding: 0 10px max(6px, env(safe-area-inset-bottom)); border-top: 1px solid #4c4436; background: #171510; }
+.practice-dock button, .compact-menu .button-link { min-height: 42px; padding: 7px 10px; font-size: .8rem; }
+.practice-dock .timeline-row { grid-template-columns: 42px minmax(0,1fr) 42px; gap: 6px; padding: 3px 0; background: transparent; font-size: .7rem; }
+.practice-dock .timeline-row input { min-width: 0; min-height: 30px; margin: 0; touch-action: pan-x; }
+.dock-main-row { display: flex; align-items: center; gap: 6px; }
+.dock-play { flex: none; width: 44px; color: #17140e; background: #d6b873; border-color: #d6b873; }
+.dock-speed-trigger { flex: 0 1 180px; white-space: nowrap; }
+.dock-range-toggle { display: flex; gap: 2px; }
+.dock-range-toggle button { white-space: nowrap; }
+.dock-collapse { flex: none; width: 40px; margin-left: auto; }
+.dock-section-row { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: thin; padding: 6px 0 0; }
+.dock-section-row button { flex: none; min-width: 42px; font-variant-numeric: tabular-nums; }
+.dock-section-row button.in-range { background: #42371f; border-color: #a68d54; }
+.dock-section-row > span { color: #b9ad98; font-size: .75rem; padding: 5px 0; line-height: 1.4; }
+.dock-speed-options { display: flex; gap: 6px; padding: 3px 0 6px; }
+.dock-speed-options button { flex: 1; }
+.dock-range-summary { margin: 4px 0 0; color: #b9ad98; font-size: .7rem; }
+.dock-hint { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; color: #b9ad98; font-size: .72rem; }
+.dock-hint button { min-height: 30px; padding: 3px 8px; flex: none; border: 0; background: transparent; color: #e3c57f; }
+.start-markers, .marker-setup { display: flex; align-items: center; gap: 10px; padding-top: 4px; font-size: .7rem; color: #c9b98f; font-variant-numeric: tabular-nums; }
+.tempo-state { margin-left: auto; color: #b9ad98; }
+.marker-setup { justify-content: space-between; color: #d9c99e; }
+.marker-setup button { min-height: 30px; padding: 3px 9px; }
+.marker-options { display: flex; gap: 6px; padding-bottom: 5px; }
+.marker-options button { flex: 1; border-color: #d6b873; color: #ead8ab; }
+.dock-error { margin: 3px 0; color: #ffabab; font-size: .75rem; }
+.dock-notice { margin: 3px 0; color: #ead8a8; font-size: .72rem; line-height: 1.3; }
+.compact-menu { max-height: min(28dvh, 220px); overflow-y: auto; padding: 6px 0; border-bottom: 1px solid #4c4436; }
+.compact-menu-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #d9c99e; font-size: .8rem; }
+.compact-menu-header button { min-height: 30px; padding: 3px 8px; border: 0; background: transparent; }
+.compact-menu-items { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 5px; padding-top: 4px; }
+.compact-menu-items button, .compact-menu-items .button-link { min-width: 0; white-space: normal; text-align: center; padding: 6px; font-size: .74rem; line-height: 1.2; }
+.compact-menu .button-link input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.compact-menu-body { padding: 4px 0; font-size: .8rem; }
+.compact-menu-body p { margin: 4px 0; color: #b9ad98; line-height: 1.4; overflow-wrap: anywhere; }
+.compact-menu-body .inline-controls { flex-wrap: wrap; align-items: center; }
+.compact-menu-body select { min-height: 40px; max-width: 100%; padding: 6px 8px; color: #eee4cf; border: 1px solid #655b48; border-radius: 7px; background: #11100d; }
+.compact-menu-body input[type=range] { flex: 1; min-width: 80px; }
+.compact-menu .confirm-button { border-color: #d6b873; color: #ead8ab; }
+.practice-dock input:focus-visible, .practice-dock select:focus-visible { outline: 2px solid #edd18c; outline-offset: 2px; }
+@media (max-width: 560px) {
+  .app-shell.has-video { padding: 0; }
+  .has-video .app-header { height: 36px; padding: 0 9px; margin: 0; }
+  .has-video .workspace { border-left: 0; border-right: 0; border-radius: 0; }
+  .player-frame.practice-player { border-radius: 0; }
+  .practice-dock { padding-left: 8px; padding-right: 8px; }
+  .practice-dock .dock-main-row { gap: 4px; }
+  .dock-speed-trigger { flex: 1; }
+  .practice-dock .dock-main-row button { padding: 6px 8px; font-size: .76rem; }
+  .practice-player .panel-label { top: 50px; }
+  .practice-player .self-mirror-button { top: auto; bottom: 6px; max-width: calc(100% - 12px); }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  .has-video .app-header { display: none; }
+  .compact-menu { max-height: 23dvh; }
+  .practice-dock { padding-bottom: max(3px,env(safe-area-inset-bottom)); }
+  .dock-hint { display: none; }
+}
