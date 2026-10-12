@@ -6,6 +6,8 @@ The current public test version is frontend-only. Selected dance videos, camera 
 
 ## Requirements
 
+Public test version: [FrameTune on Vercel](https://frametune-neon.vercel.app/). Release verification: [2026-10-12 release record](docs/RELEASE_STATUS.md).
+
 - Windows PowerShell
 - Node.js with npm
 - Python 3.12 or newer only if you want to run the legacy Phase 0 health-check API

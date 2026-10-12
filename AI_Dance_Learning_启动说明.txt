@@ -2,13 +2,13 @@ AI Dance Learning 本地启动说明
 ================================
 
 项目位置：
-C:\Users\Iris\Desktop\AI_Dance_Learning
+C:\Users\Iris\DDA Trading Dropbox\Artificial Intel\AI PROJECTS\AI_Dance_Learning
 
 
 【最简单的启动方式】
 
 1. 打开项目文件夹：
-C:\Users\Iris\Desktop\AI_Dance_Learning
+C:\Users\Iris\DDA Trading Dropbox\Artificial Intel\AI PROJECTS\AI_Dance_Learning
 
 2. 在文件夹空白处点击右键，选择：
 “在终端中打开”
@@ -29,7 +29,7 @@ http://127.0.0.1:5173
 
 【手动输入完整命令】
 
-cd C:\Users\Iris\Desktop\AI_Dance_Learning
+cd 'C:\Users\Iris\DDA Trading Dropbox\Artificial Intel\AI PROJECTS\AI_Dance_Learning'
 
 powershell -ExecutionPolicy Bypass -File .\start_frontend.ps1
 

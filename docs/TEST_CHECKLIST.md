@@ -2,6 +2,8 @@
 
 ## Current work — 2026-10-11 mobile practice
 
+Release check — 2026-10-12: [RELEASE_STATUS.md](RELEASE_STATUS.md) records 31 logic tests and all 28 browser tests against the Vercel production domain, with no skips. Both build modes pass; production JS/CSS/Worker match the tested local build.
+
 Latest full regression evidence is in [PRACTICE_SETUP_TEST_REPORT.md](PRACTICE_SETUP_TEST_REPORT.md); BPM evidence is in [BPM_AUTO_TEST_REPORT.md](BPM_AUTO_TEST_REPORT.md), and earlier mobile evidence is in [MOBILE_PRACTICE_TEST_REPORT.md](MOBILE_PRACTICE_TEST_REPORT.md). The older phase checklists below are historical records, not claims about every current browser/device.
 
 - [x] Fixed dock stays in view at 320×568, 390×844, 844×390 and 1280×800; both languages are readable with no page-width overflow.

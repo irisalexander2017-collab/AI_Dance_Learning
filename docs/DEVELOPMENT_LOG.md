@@ -130,3 +130,10 @@
 - Three new failure-first browser cases cover restored markers in both languages and invalid Dance starts with recovery. Read-only review confirmed scope and added preservation assertions.
 - One original calibration persistence test raced page reload against the save effect; added observable manual-mode and saved-value assertions, not fixed sleeps or product BPM changes. Final root and GitHub Pages regressions each pass28 tests; all31 logic tests and both builds pass. Downloaded recording retains audible teacher audio.
 - Updated current instructions and recorded evidence in PRACTICE_SETUP_TEST_REPORT.md. No style, BPM algorithm, custom-section, recording, dependency or deployment configuration change; no commit, push or deployment. Dev server remains running.
+
+## 2026-10-12 — Vercel release of verified practice updates
+
+- Iris authorized deployment. Product commit43d5826 was pushed normally to master and the existing Vercel Git integration deployed it to production; no configuration change, Alibaba Cloud deployment or choreography-counting feature.
+- Fresh31 logic tests,28 local production browser tests and28 Vercel production browser tests passed with no skips. Both build modes passed; npm audit reported0 vulnerabilities. Read-only release review found no blocking issues.
+- Privacy browser tests now allow only static same-origin GET resources rather than hard-coding localhost, so production checks still reject API/upload/cross-origin requests. Two real-video tests passed after this test-only adjustment.
+- Downloaded online recording has1280×720 VP9 and audible Opus audio. Online JS/CSS/Worker SHA256 match the tested local build. Details are in RELEASE_STATUS.md; current records and moved-project startup path were synchronized.

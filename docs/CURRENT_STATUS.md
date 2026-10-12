@@ -1,14 +1,15 @@
 # FrameTune 当前状态
 
-更新时间：2026-10-11
+更新时间：2026-10-12
 
 ## 当前结论
 
 - 已验证：练习设置保持音乐→动作连续两步，旧起点不再使本次设置提前结束。31项逻辑测试及根路径、GitHub Pages子路径各28项真实Chrome网页回归全部通过，无跳过，独立审查无阻挡问题。
-- 当前工作版已完成手机优先的练舞界面精简及用户反馈的BPM三分之一误判修复。MVP-08 本地录像流程保留。本轮只修改起点设置流程、测试及相关说明。
-- 用户功能仍是纯前端，不需后端；本次没有提交、push 或部署。
+- 已发布手机优先的练舞界面精简、BPM三分之一误判修复和音乐→动作连续设置。MVP-08 本地录像流程保留；本轮发布不新增动作数拍功能。
+- 用户功能仍是纯前端，不需后端；产品提交43d5826已push到master并部署至Vercel生产项目frametune，地址为 https://frametune-neon.vercel.app/ 。
 - 项目现位于 Dropbox 的 `Artificial Intel/AI PROJECTS/AI_Dance_Learning`，旧桌面路径已不存在。
-- 最新测试证据见 [连续设置测试记录](PRACTICE_SETUP_TEST_REPORT.md)；BPM验收见 [自动BPM测试记录](BPM_AUTO_TEST_REPORT.md)，此前界面验收见 [手机练舞测试记录](MOBILE_PRACTICE_TEST_REPORT.md)。历史阶段文档不代表当前所有设备兼容性。
+- 本轮重新运行31项逻辑测试、本地根路径28项及正式Vercel地址28项真实Chrome网页回归，均全部通过，无跳过；两种生产构建通过，依赖检查0漏洞，独立审查无阻挡问题。线上JS、CSS和BPM Worker与本地验收构建的SHA256一致。
+- 最新发布证据见 [发布记录](RELEASE_STATUS.md)；连续设置、BPM和此前界面验收分别见 [连续设置测试记录](PRACTICE_SETUP_TEST_REPORT.md)、[自动BPM测试记录](BPM_AUTO_TEST_REPORT.md)、[手机练舞测试记录](MOBILE_PRACTICE_TEST_REPORT.md)。历史阶段文档不代表当前所有设备兼容性。
 
 ## 当前操作
 
