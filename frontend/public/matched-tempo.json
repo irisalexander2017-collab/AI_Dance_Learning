@@ -1,0 +1,683 @@
+{
+  "generated_at_asia_shanghai": "2026-10-30T19:28:05.398407+08:00",
+  "scope": "only /workspace/街舞项目/ai-dance-copy (and sibling work files under 街舞项目)",
+  "methods": [
+    "ffmpeg extract audio",
+    "fpcalc chromaprint + AcoustID lookup API (user-provided application client key; status=ok, no recording hits on these phone/room clips)",
+    "Shazam fingerprint via shazamio (public path fallback)",
+    "published BPM lookup when song identified; else librosa",
+    "AcoustID long-segment re-probe: silencedetect mid 30–60s + fpcalc chromaprint + lookup (duration=segment and whole-file); 已用用户提供的 client key"
+  ],
+  "matches": [
+    {
+      "video_file": "Weixin-2026-07-11.mp4",
+      "desktop_original_name": "Weixin Videos2026-07-11_174730_432.mp4",
+      "video_size_bytes": 3943446,
+      "dance_id": "Weixin-2026-07-11.mp4:3943446",
+      "duration_s": 39.38,
+      "match": {
+        "ok": true,
+        "title": "COCA BODY (feat. Odeal & Wizkid)",
+        "artist": "Frenna",
+        "method": "shazam_fingerprint",
+        "confidence": 0.85,
+        "shazam_url": "https://www.shazam.com/track/886295471/coca-body-feat-odeal-wizkid",
+        "isrc": "NLG662600314",
+        "note": null
+      },
+      "bpm": {
+        "value": 102,
+        "source": "published:songdata/beatstats",
+        "confidence": 0.9,
+        "librosa_beat_track": 103.4,
+        "librosa_tempo": 103.4,
+        "candidates": [
+          51.7,
+          103.4,
+          206.7
+        ],
+        "published_ref": "https://songdata.io/track/1Cns7nhgjkLJL5NmcKrUPG/COCA-BODY-by-Frenna-Odeal-Wizkid",
+        "embedded_tmpo_int": 102
+      },
+      "acoustid": {
+        "attempted": true,
+        "ok": false,
+        "key_valid": true,
+        "api_status": "ok",
+        "results_count": 0,
+        "score": null,
+        "title": null,
+        "artist": null,
+        "recording_mbid": null,
+        "reason": "AcoustID lookup 成功（已用用户提供的 client key）但无录音匹配 results=[]；短片段/房间混录常见",
+        "fingerprint_file": "work/audio-match/acoustid-fingerprints/Weixin-2026-07-11.fp.json",
+        "long_segment_reprobe": {
+          "attempted": true,
+          "ok": false,
+          "key_note": "已用用户提供的 client key",
+          "segment_start_s": 0.0,
+          "segment_end_s": 39.36,
+          "segment_length_s": 39.36,
+          "segment_strategy": "silencedetect_longest_nonsilent_full",
+          "fpcalc_version": "fpcalc version 1.5.1 (FFmpeg Lavc58.134.100 Lavf58.76.100 SwR3.9.100)",
+          "fpcalc_algorithm": "chromaprint (fpcalc default)",
+          "fingerprint_file": "work/audio-match/acoustid-long/Weixin-2026-07-11.fp.json",
+          "duration_param_note": "AcoustID 文档要求 duration=整文件秒数；本轮对片段指纹同时试了 duration=片段秒数 与 duration=整文件秒数。片段指纹+整文件 duration 存在参数取舍限制。",
+          "lookups": {
+            "duration_segment": {
+              "api_status": "ok",
+              "results_count": 0,
+              "error": null,
+              "top": null
+            },
+            "duration_whole_file": {
+              "api_status": "ok",
+              "results_count": 0,
+              "error": null,
+              "top": null
+            }
+          },
+          "best": null,
+          "reason": "长片段复跑仍 results=0；手机/房间混录与母带差异大，AcoustID 通常需要接近母带的干净音源"
+        }
+      },
+      "writeback": {
+        "matched_tempo_json": true,
+        "mp4_tmpo_tagged_copy": "/workspace/街舞项目/ai-dance-copy/work/audio-match/videos-tagged/Weixin-2026-07-11.mp4",
+        "indexeddb_auto_seed": false,
+        "frontend_auto_path": "导入 videos-tagged 副本即可由 readEmbeddedTempo 采用 BPM；或试用站手动点 BPM 输入 matched-tempo.json 的值",
+        "acoustid_updated": true,
+        "mp4_tmpo_retagged": false,
+        "mp4_tmpo_retagged_reason": "BPM 未因 AcoustID 变更，保留既有 videos-tagged tmpo"
+      }
+    },
+    {
+      "video_file": "Weixin-2026-09-03.mp4",
+      "desktop_original_name": "Weixin Videos2026-09-03_204536_779.mp4",
+      "video_size_bytes": 11218813,
+      "dance_id": "Weixin-2026-09-03.mp4:11218813",
+      "duration_s": 58.56,
+      "match": {
+        "ok": false,
+        "title": null,
+        "artist": null,
+        "method": "failed",
+        "confidence": 0.0,
+        "shazam_url": null,
+        "isrc": null,
+        "note": "短片段/房间录音/混音可能导致指纹失败；本条未识别到曲目"
+      },
+      "bpm": {
+        "value": 92.3,
+        "source": "librosa_beat_track",
+        "confidence": 0.4,
+        "librosa_beat_track": 92.3,
+        "librosa_tempo": 92.3,
+        "candidates": [
+          46.1,
+          92.3,
+          184.6
+        ],
+        "published_ref": "no published BPM found; local onset/tempogram estimate",
+        "embedded_tmpo_int": 92
+      },
+      "acoustid": {
+        "attempted": true,
+        "ok": false,
+        "key_valid": true,
+        "api_status": "ok",
+        "results_count": 0,
+        "score": null,
+        "title": null,
+        "artist": null,
+        "recording_mbid": null,
+        "reason": "AcoustID lookup 成功（已用用户提供的 client key）但无录音匹配 results=[]；短片段/房间混录常见",
+        "fingerprint_file": "work/audio-match/acoustid-fingerprints/Weixin-2026-09-03.fp.json",
+        "long_segment_reprobe": {
+          "attempted": true,
+          "ok": false,
+          "key_note": "已用用户提供的 client key",
+          "segment_start_s": 0.0,
+          "segment_end_s": 58.561,
+          "segment_length_s": 58.561,
+          "segment_strategy": "silencedetect_longest_nonsilent_full",
+          "fpcalc_version": "fpcalc version 1.5.1 (FFmpeg Lavc58.134.100 Lavf58.76.100 SwR3.9.100)",
+          "fpcalc_algorithm": "chromaprint (fpcalc default)",
+          "fingerprint_file": "work/audio-match/acoustid-long/Weixin-2026-09-03.fp.json",
+          "duration_param_note": "AcoustID 文档要求 duration=整文件秒数；本轮对片段指纹同时试了 duration=片段秒数 与 duration=整文件秒数。片段指纹+整文件 duration 存在参数取舍限制。",
+          "lookups": {
+            "duration_segment": {
+              "api_status": "ok",
+              "results_count": 0,
+              "error": null,
+              "top": null
+            },
+            "duration_whole_file": {
+              "api_status": "ok",
+              "results_count": 0,
+              "error": null,
+              "top": null
+            }
+          },
+          "best": null,
+          "reason": "长片段复跑仍 results=0；手机/房间混录与母带差异大，AcoustID 通常需要接近母带的干净音源"
+        }
+      },
+      "writeback": {
+        "matched_tempo_json": true,
+        "mp4_tmpo_tagged_copy": "/workspace/街舞项目/ai-dance-copy/work/audio-match/videos-tagged/Weixin-2026-09-03.mp4",
+        "indexeddb_auto_seed": false,
+        "frontend_auto_path": "导入 videos-tagged 副本即可由 readEmbeddedTempo 采用 BPM；或试用站手动点 BPM 输入 matched-tempo.json 的值",
+        "acoustid_updated": true,
+        "mp4_tmpo_retagged": false,
+        "mp4_tmpo_retagged_reason": "BPM 未因 AcoustID 变更，保留既有 videos-tagged tmpo"
+      }
+    },
+    {
+      "video_file": "leezy-5-10.mp4",
+      "desktop_original_name": "leezy 5'10.mp4",
+      "video_size_bytes": 5463221,
+      "dance_id": "leezy-5-10.mp4:5463221",
+      "duration_s": 41.17,
+      "match": {
+        "ok": true,
+        "title": "5’10 fever",
+        "artist": "Lee-Rene'",
+        "method": "shazam_fingerprint",
+        "confidence": 0.85,
+        "shazam_url": "https://www.shazam.com/track/875185031/510-fever",
+        "isrc": "SE6I32676641",
+        "note": null
+      },
+      "bpm": {
+        "value": 103.4,
+        "source": "librosa_beat_track",
+        "confidence": 0.55,
+        "librosa_beat_track": 103.4,
+        "librosa_tempo": 103.4,
+        "candidates": [
+          51.7,
+          103.4,
+          206.7
+        ],
+        "published_ref": "no published BPM found; local onset/tempogram estimate",
+        "embedded_tmpo_int": 103
+      },
+      "acoustid": {
+        "attempted": true,
+        "ok": false,
+        "key_valid": true,
+        "api_status": "ok",
+        "results_count": 0,
+        "score": null,
+        "title": null,
+        "artist": null,
+        "recording_mbid": null,
+        "reason": "AcoustID lookup 成功（已用用户提供的 client key）但无录音匹配 results=[]；短片段/房间混录常见",
+        "fingerprint_file": "work/audio-match/acoustid-fingerprints/leezy-5-10.fp.json",
+        "long_segment_reprobe": {
+          "attempted": true,
+          "ok": false,
+          "key_note": "已用用户提供的 client key",
+          "segment_start_s": 0.0,
+          "segment_end_s": 40.545,
+          "segment_length_s": 40.545,
+          "segment_strategy": "silencedetect_longest_nonsilent_full",
+          "fpcalc_version": "fpcalc version 1.5.1 (FFmpeg Lavc58.134.100 Lavf58.76.100 SwR3.9.100)",
+          "fpcalc_algorithm": "chromaprint (fpcalc default)",
+          "fingerprint_file": "work/audio-match/acoustid-long/leezy-5-10.fp.json",
+          "duration_param_note": "AcoustID 文档要求 duration=整文件秒数；本轮对片段指纹同时试了 duration=片段秒数 与 duration=整文件秒数。片段指纹+整文件 duration 存在参数取舍限制。",
+          "lookups": {
+            "duration_segment": {
+              "api_status": "ok",
+              "results_count": 0,
+              "error": null,
+              "top": null
+            },
+            "duration_whole_file": {
+              "api_status": "ok",
+              "results_count": 0,
+              "error": null,
+              "top": null
+            }
+          },
+          "best": null,
+          "reason": "长片段复跑仍 results=0；手机/房间混录与母带差异大，AcoustID 通常需要接近母带的干净音源"
+        }
+      },
+      "writeback": {
+        "matched_tempo_json": true,
+        "mp4_tmpo_tagged_copy": "/workspace/街舞项目/ai-dance-copy/work/audio-match/videos-tagged/leezy-5-10.mp4",
+        "indexeddb_auto_seed": false,
+        "frontend_auto_path": "导入 videos-tagged 副本即可由 readEmbeddedTempo 采用 BPM；或试用站手动点 BPM 输入 matched-tempo.json 的值",
+        "acoustid_updated": true,
+        "mp4_tmpo_retagged": false,
+        "mp4_tmpo_retagged_reason": "BPM 未因 AcoustID 变更，保留既有 videos-tagged tmpo"
+      }
+    },
+    {
+      "video_file": "lylebeniga-finechina.mp4",
+      "desktop_original_name": "lylebeniga-finechina.mp4",
+      "video_size_bytes": 8215776,
+      "dance_id": "lylebeniga-finechina.mp4:8215776",
+      "duration_s": 69.45,
+      "match": {
+        "ok": true,
+        "title": "Fine China",
+        "artist": "Chris Brown",
+        "method": "shazam_fingerprint",
+        "confidence": 0.85,
+        "shazam_url": "https://www.shazam.com/track/86704240/fine-china",
+        "isrc": "USRC11300305",
+        "note": null
+      },
+      "bpm": {
+        "value": 104,
+        "source": "published:getsongbpm/songbpm/hooktheory",
+        "confidence": 0.9,
+        "librosa_beat_track": 103.4,
+        "librosa_tempo": 103.4,
+        "candidates": [
+          51.7,
+          103.4,
+          206.7
+        ],
+        "published_ref": "https://songbpm.com/@chris-brown/fine-china",
+        "embedded_tmpo_int": 104
+      },
+      "acoustid": {
+        "attempted": true,
+        "ok": false,
+        "key_valid": true,
+        "api_status": "ok",
+        "results_count": 0,
+        "score": null,
+        "title": null,
+        "artist": null,
+        "recording_mbid": null,
+        "reason": "AcoustID lookup 成功（已用用户提供的 client key）但无录音匹配 results=[]；短片段/房间混录常见",
+        "fingerprint_file": "work/audio-match/acoustid-fingerprints/lylebeniga-finechina.fp.json",
+        "long_segment_reprobe": {
+          "attempted": true,
+          "ok": false,
+          "key_note": "已用用户提供的 client key",
+          "segment_start_s": 2.873,
+          "segment_end_s": 62.873,
+          "segment_length_s": 60.0,
+          "segment_strategy": "silencedetect_longest_nonsilent_centered",
+          "fpcalc_version": "fpcalc version 1.5.1 (FFmpeg Lavc58.134.100 Lavf58.76.100 SwR3.9.100)",
+          "fpcalc_algorithm": "chromaprint (fpcalc default)",
+          "fingerprint_file": "work/audio-match/acoustid-long/lylebeniga-finechina.fp.json",
+          "duration_param_note": "AcoustID 文档要求 duration=整文件秒数；本轮对片段指纹同时试了 duration=片段秒数 与 duration=整文件秒数。片段指纹+整文件 duration 存在参数取舍限制。",
+          "lookups": {
+            "duration_segment": {
+              "api_status": "ok",
+              "results_count": 0,
+              "error": null,
+              "top": null
+            },
+            "duration_whole_file": {
+              "api_status": "ok",
+              "results_count": 0,
+              "error": null,
+              "top": null
+            }
+          },
+          "best": null,
+          "reason": "长片段复跑仍 results=0；手机/房间混录与母带差异大，AcoustID 通常需要接近母带的干净音源"
+        }
+      },
+      "writeback": {
+        "matched_tempo_json": true,
+        "mp4_tmpo_tagged_copy": "/workspace/街舞项目/ai-dance-copy/work/audio-match/videos-tagged/lylebeniga-finechina.mp4",
+        "indexeddb_auto_seed": false,
+        "frontend_auto_path": "导入 videos-tagged 副本即可由 readEmbeddedTempo 采用 BPM；或试用站手动点 BPM 输入 matched-tempo.json 的值",
+        "acoustid_updated": true,
+        "mp4_tmpo_retagged": false,
+        "mp4_tmpo_retagged_reason": "BPM 未因 AcoustID 变更，保留既有 videos-tagged tmpo"
+      }
+    },
+    {
+      "video_file": "sep3-clip.mp4",
+      "desktop_original_name": "9月3日(2).mp4",
+      "video_size_bytes": 45177586,
+      "dance_id": "sep3-clip.mp4:45177586",
+      "duration_s": 46.83,
+      "match": {
+        "ok": true,
+        "title": "Like I Love You",
+        "artist": "Justin Timberlake",
+        "method": "shazam_fingerprint",
+        "confidence": 0.85,
+        "shazam_url": "https://www.shazam.com/track/20111467/like-i-love-you",
+        "isrc": "USJI10200248",
+        "note": null
+      },
+      "bpm": {
+        "value": 115,
+        "source": "published:songbpm/beatport",
+        "confidence": 0.9,
+        "librosa_beat_track": 117.5,
+        "librosa_tempo": 117.5,
+        "candidates": [
+          58.7,
+          117.5,
+          234.9
+        ],
+        "published_ref": "https://songbpm.com/@justin-timberlake/like-i-love-you",
+        "embedded_tmpo_int": 115
+      },
+      "acoustid": {
+        "attempted": true,
+        "ok": false,
+        "key_valid": true,
+        "api_status": "ok",
+        "results_count": 0,
+        "score": null,
+        "title": null,
+        "artist": null,
+        "recording_mbid": null,
+        "reason": "AcoustID lookup 成功（已用用户提供的 client key）但无录音匹配 results=[]；短片段/房间混录常见",
+        "fingerprint_file": "work/audio-match/acoustid-fingerprints/sep3-clip.fp.json",
+        "long_segment_reprobe": {
+          "attempted": true,
+          "ok": false,
+          "key_note": "已用用户提供的 client key",
+          "segment_start_s": 0.0,
+          "segment_end_s": 46.834,
+          "segment_length_s": 46.834,
+          "segment_strategy": "silencedetect_longest_nonsilent_full",
+          "fpcalc_version": "fpcalc version 1.5.1 (FFmpeg Lavc58.134.100 Lavf58.76.100 SwR3.9.100)",
+          "fpcalc_algorithm": "chromaprint (fpcalc default)",
+          "fingerprint_file": "work/audio-match/acoustid-long/sep3-clip.fp.json",
+          "duration_param_note": "AcoustID 文档要求 duration=整文件秒数；本轮对片段指纹同时试了 duration=片段秒数 与 duration=整文件秒数。片段指纹+整文件 duration 存在参数取舍限制。",
+          "lookups": {
+            "duration_segment": {
+              "api_status": "ok",
+              "results_count": 0,
+              "error": null,
+              "top": null
+            },
+            "duration_whole_file": {
+              "api_status": "ok",
+              "results_count": 0,
+              "error": null,
+              "top": null
+            }
+          },
+          "best": null,
+          "reason": "长片段复跑仍 results=0；手机/房间混录与母带差异大，AcoustID 通常需要接近母带的干净音源"
+        }
+      },
+      "writeback": {
+        "matched_tempo_json": true,
+        "mp4_tmpo_tagged_copy": "/workspace/街舞项目/ai-dance-copy/work/audio-match/videos-tagged/sep3-clip.mp4",
+        "indexeddb_auto_seed": false,
+        "frontend_auto_path": "导入 videos-tagged 副本即可由 readEmbeddedTempo 采用 BPM；或试用站手动点 BPM 输入 matched-tempo.json 的值",
+        "acoustid_updated": true,
+        "mp4_tmpo_retagged": false,
+        "mp4_tmpo_retagged_reason": "BPM 未因 AcoustID 变更，保留既有 videos-tagged tmpo"
+      }
+    },
+    {
+      "video_file": "shaheem-10count.mp4",
+      "desktop_original_name": "shaheem-10count.mp4",
+      "video_size_bytes": 4718876,
+      "dance_id": "shaheem-10count.mp4:4718876",
+      "duration_s": 31.83,
+      "match": {
+        "ok": true,
+        "title": "10count",
+        "artist": "Rym",
+        "method": "shazam_fingerprint",
+        "confidence": 0.85,
+        "shazam_url": "https://www.shazam.com/track/872048040/10count",
+        "isrc": "QT66M2641129",
+        "note": null
+      },
+      "bpm": {
+        "value": 107.7,
+        "source": "librosa_beat_track",
+        "confidence": 0.55,
+        "librosa_beat_track": 107.7,
+        "librosa_tempo": 107.7,
+        "candidates": [
+          53.8,
+          107.7,
+          215.3
+        ],
+        "published_ref": "no published BPM found; local onset/tempogram estimate",
+        "embedded_tmpo_int": 108
+      },
+      "acoustid": {
+        "attempted": true,
+        "ok": false,
+        "key_valid": true,
+        "api_status": "ok",
+        "results_count": 0,
+        "score": null,
+        "title": null,
+        "artist": null,
+        "recording_mbid": null,
+        "reason": "AcoustID lookup 成功（已用用户提供的 client key）但无录音匹配 results=[]；短片段/房间混录常见",
+        "fingerprint_file": "work/audio-match/acoustid-fingerprints/shaheem-10count.fp.json",
+        "long_segment_reprobe": {
+          "attempted": true,
+          "ok": false,
+          "key_note": "已用用户提供的 client key",
+          "segment_start_s": 0.0,
+          "segment_end_s": 31.286,
+          "segment_length_s": 31.286,
+          "segment_strategy": "silencedetect_longest_nonsilent_full",
+          "fpcalc_version": "fpcalc version 1.5.1 (FFmpeg Lavc58.134.100 Lavf58.76.100 SwR3.9.100)",
+          "fpcalc_algorithm": "chromaprint (fpcalc default)",
+          "fingerprint_file": "work/audio-match/acoustid-long/shaheem-10count.fp.json",
+          "duration_param_note": "AcoustID 文档要求 duration=整文件秒数；本轮对片段指纹同时试了 duration=片段秒数 与 duration=整文件秒数。片段指纹+整文件 duration 存在参数取舍限制。",
+          "lookups": {
+            "duration_segment": {
+              "api_status": "ok",
+              "results_count": 0,
+              "error": null,
+              "top": null
+            },
+            "duration_whole_file": {
+              "api_status": "ok",
+              "results_count": 0,
+              "error": null,
+              "top": null
+            }
+          },
+          "best": null,
+          "reason": "长片段复跑仍 results=0；手机/房间混录与母带差异大，AcoustID 通常需要接近母带的干净音源"
+        }
+      },
+      "writeback": {
+        "matched_tempo_json": true,
+        "mp4_tmpo_tagged_copy": "/workspace/街舞项目/ai-dance-copy/work/audio-match/videos-tagged/shaheem-10count.mp4",
+        "indexeddb_auto_seed": false,
+        "frontend_auto_path": "导入 videos-tagged 副本即可由 readEmbeddedTempo 采用 BPM；或试用站手动点 BPM 输入 matched-tempo.json 的值",
+        "acoustid_updated": true,
+        "mp4_tmpo_retagged": false,
+        "mp4_tmpo_retagged_reason": "BPM 未因 AcoustID 变更，保留既有 videos-tagged tmpo"
+      }
+    },
+    {
+      "video_file": "shaheem-safer.mp4",
+      "desktop_original_name": "shaheem-safer.mp4",
+      "video_size_bytes": 7918302,
+      "dance_id": "shaheem-safer.mp4:7918302",
+      "duration_s": 48.97,
+      "match": {
+        "ok": true,
+        "title": "Safer",
+        "artist": "Tyla",
+        "method": "shazam_fingerprint",
+        "confidence": 0.85,
+        "shazam_url": "https://www.shazam.com/track/684054045/safer",
+        "isrc": "USSM12308658",
+        "note": null
+      },
+      "bpm": {
+        "value": 118,
+        "source": "published:tunebat/hooktheory/beatport",
+        "confidence": 0.9,
+        "librosa_beat_track": 117.5,
+        "librosa_tempo": 117.5,
+        "candidates": [
+          58.7,
+          117.5,
+          234.9
+        ],
+        "published_ref": "https://tunebat.com/Info/Safer-Tyla/2sghtIUWplVFKBRIHsVmFu",
+        "embedded_tmpo_int": 118
+      },
+      "acoustid": {
+        "attempted": true,
+        "ok": false,
+        "key_valid": true,
+        "api_status": "ok",
+        "results_count": 0,
+        "score": null,
+        "title": null,
+        "artist": null,
+        "recording_mbid": null,
+        "reason": "AcoustID lookup 成功（已用用户提供的 client key）但无录音匹配 results=[]；短片段/房间混录常见",
+        "fingerprint_file": "work/audio-match/acoustid-fingerprints/shaheem-safer.fp.json",
+        "long_segment_reprobe": {
+          "attempted": true,
+          "ok": false,
+          "key_note": "已用用户提供的 client key",
+          "segment_start_s": 0.0,
+          "segment_end_s": 48.969,
+          "segment_length_s": 48.969,
+          "segment_strategy": "silencedetect_longest_nonsilent_full",
+          "fpcalc_version": "fpcalc version 1.5.1 (FFmpeg Lavc58.134.100 Lavf58.76.100 SwR3.9.100)",
+          "fpcalc_algorithm": "chromaprint (fpcalc default)",
+          "fingerprint_file": "work/audio-match/acoustid-long/shaheem-safer.fp.json",
+          "duration_param_note": "AcoustID 文档要求 duration=整文件秒数；本轮对片段指纹同时试了 duration=片段秒数 与 duration=整文件秒数。片段指纹+整文件 duration 存在参数取舍限制。",
+          "lookups": {
+            "duration_segment": {
+              "api_status": "ok",
+              "results_count": 0,
+              "error": null,
+              "top": null
+            },
+            "duration_whole_file": {
+              "api_status": "ok",
+              "results_count": 0,
+              "error": null,
+              "top": null
+            }
+          },
+          "best": null,
+          "reason": "长片段复跑仍 results=0；手机/房间混录与母带差异大，AcoustID 通常需要接近母带的干净音源"
+        }
+      },
+      "writeback": {
+        "matched_tempo_json": true,
+        "mp4_tmpo_tagged_copy": "/workspace/街舞项目/ai-dance-copy/work/audio-match/videos-tagged/shaheem-safer.mp4",
+        "indexeddb_auto_seed": false,
+        "frontend_auto_path": "导入 videos-tagged 副本即可由 readEmbeddedTempo 采用 BPM；或试用站手动点 BPM 输入 matched-tempo.json 的值",
+        "acoustid_updated": true,
+        "mp4_tmpo_retagged": false,
+        "mp4_tmpo_retagged_reason": "BPM 未因 AcoustID 变更，保留既有 videos-tagged tmpo"
+      }
+    },
+    {
+      "video_file": "shaheem-shegoesby.mp4",
+      "desktop_original_name": "shaheem-shegoesby.mp4",
+      "video_size_bytes": 3428872,
+      "dance_id": "shaheem-shegoesby.mp4:3428872",
+      "duration_s": 45.65,
+      "match": {
+        "ok": true,
+        "title": "she goes by.",
+        "artist": "where.t.at",
+        "method": "shazam_fingerprint",
+        "confidence": 0.85,
+        "shazam_url": "https://www.shazam.com/track/870049078/she-goes-by",
+        "isrc": "QZTAZ2603854",
+        "note": null
+      },
+      "bpm": {
+        "value": 145,
+        "source": "published:tunebat (145) / songdata (146)",
+        "confidence": 0.9,
+        "librosa_beat_track": 143.6,
+        "librosa_tempo": 143.6,
+        "candidates": [
+          71.8,
+          143.6
+        ],
+        "published_ref": "https://tunebat.com/Info/she-goes-by-where-t-at/0wjo0Iruo1jsGqyi4fwbFf",
+        "embedded_tmpo_int": 145
+      },
+      "acoustid": {
+        "attempted": true,
+        "ok": false,
+        "key_valid": true,
+        "api_status": "ok",
+        "results_count": 0,
+        "score": null,
+        "title": null,
+        "artist": null,
+        "recording_mbid": null,
+        "reason": "AcoustID lookup 成功（已用用户提供的 client key）但无录音匹配 results=[]；短片段/房间混录常见",
+        "fingerprint_file": "work/audio-match/acoustid-fingerprints/shaheem-shegoesby.fp.json",
+        "long_segment_reprobe": {
+          "attempted": true,
+          "ok": false,
+          "key_note": "已用用户提供的 client key",
+          "segment_start_s": 0.0,
+          "segment_end_s": 44.97,
+          "segment_length_s": 44.97,
+          "segment_strategy": "silencedetect_longest_nonsilent_full",
+          "fpcalc_version": "fpcalc version 1.5.1 (FFmpeg Lavc58.134.100 Lavf58.76.100 SwR3.9.100)",
+          "fpcalc_algorithm": "chromaprint (fpcalc default)",
+          "fingerprint_file": "work/audio-match/acoustid-long/shaheem-shegoesby.fp.json",
+          "duration_param_note": "AcoustID 文档要求 duration=整文件秒数；本轮对片段指纹同时试了 duration=片段秒数 与 duration=整文件秒数。片段指纹+整文件 duration 存在参数取舍限制。",
+          "lookups": {
+            "duration_segment": {
+              "api_status": "ok",
+              "results_count": 0,
+              "error": null,
+              "top": null
+            },
+            "duration_whole_file": {
+              "api_status": "ok",
+              "results_count": 0,
+              "error": null,
+              "top": null
+            }
+          },
+          "best": null,
+          "reason": "长片段复跑仍 results=0；手机/房间混录与母带差异大，AcoustID 通常需要接近母带的干净音源"
+        }
+      },
+      "writeback": {
+        "matched_tempo_json": true,
+        "mp4_tmpo_tagged_copy": "/workspace/街舞项目/ai-dance-copy/work/audio-match/videos-tagged/shaheem-shegoesby.mp4",
+        "indexeddb_auto_seed": false,
+        "frontend_auto_path": "导入 videos-tagged 副本即可由 readEmbeddedTempo 采用 BPM；或试用站手动点 BPM 输入 matched-tempo.json 的值",
+        "acoustid_updated": true,
+        "mp4_tmpo_retagged": false,
+        "mp4_tmpo_retagged_reason": "BPM 未因 AcoustID 变更，保留既有 videos-tagged tmpo"
+      }
+    }
+  ],
+  "acoustid_run": {
+    "at_asia_shanghai": "2026-10-30T19:24:42+08:00",
+    "client_key": "已用用户提供的 client key",
+    "api": "https://api.acoustid.org/v2/lookup",
+    "meta": "recordings+releasegroups+compress",
+    "key_valid": true,
+    "note": "全部 8 支返回 status=ok 且 results=[]；对照 invalid key 会报 code=4 invalid API key。手机/房间录音指纹通常难命中 AcoustID，曲目仍以既有 Shazam 结果为准。BPM 未因 AcoustID 变更，videos-tagged tmpo 无需重写。"
+  },
+  "acoustid_long_segment_reprobe": {
+    "at_asia_shanghai": "2026-10-30T19:28:05.398430+08:00",
+    "note": "已用用户提供的 client key；对有能量中段抽 30–60s 连续音频再查；仍无命中则不改歌名/BPM",
+    "fpcalc_version": "fpcalc version 1.5.1 (FFmpeg Lavc58.134.100 Lavf58.76.100 SwR3.9.100)",
+    "extra_mid15_algo_hits": 0,
+    "any_better_match": false
+  }
+}

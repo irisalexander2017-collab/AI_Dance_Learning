@@ -112,11 +112,12 @@ export function getPracticeRange(
   currentIndex: number,
   duration: number,
   bpm: number,
+  withPreparation = true,
 ): PracticeRange {
   if (segments.length === 0) return { startTime: 0, endTime: duration }
   const safeIndex = Math.min(Math.max(0, currentIndex), segments.length - 1)
   const current = segments[safeIndex]
-  const preparationStart = getPreparationRange(segments, bpm)?.startTime ?? segments[0].startTime
+  const preparationStart = withPreparation ? getPreparationRange(segments, bpm)?.startTime ?? segments[0].startTime : segments[0].startTime
   if (mode === 'current' && safeIndex === 0) return { startTime: preparationStart, endTime: current.endTime }
   if (mode === 'previous-current') return { startTime: safeIndex <= 1 ? preparationStart : segments[safeIndex - 1].startTime, endTime: current.endTime }
   if (mode === 'from-start') return { startTime: preparationStart, endTime: current.endTime }

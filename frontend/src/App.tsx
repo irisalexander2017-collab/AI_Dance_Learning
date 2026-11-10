@@ -1,9 +1,28 @@
-import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { PracticeDock } from './practice/PracticeDock'
+import { CoverStage } from './cover/CoverStage'
 import { TeacherGesture } from './practice/teacherGesture'
-import { analyzeVideoTempo } from './practice/tempoAnalysis'
-import { normalizePracticeState, type SavedPracticeState } from './practice/savedPractice'
+import { analyzeVideoAudioCached } from './practice/danceStore'
+import { clearDances, countKeyOf, danceId, deleteDance, hydrateFromDance, listDances, patchDance, type DanceRecord } from './practice/danceStore'
+import { BpmChip, BpmEditor, analyzingPhaseLabel, type TempoPhase, type TempoStatus } from './beats/BpmPanel.tsx'
+import { lookupMatchedTempo } from './beats/matchedTempo.ts'
+import { blobSource, readEmbeddedTempo } from './beats/metadata.ts'
+import type { TimedEvent } from './beats/onset.ts'
+import { BeatOverlay } from './coach/BeatOverlay.tsx'
+import { SavedDances } from './practice/SavedDances'
+import { CountSettingsPanel } from './coach/CountSettingsPanel.tsx'
+import { useCountCoach } from './coach/useCountCoach.ts'
+import { CustomCutsEditor } from './practice/CustomCuts.tsx'
+import { addCut, buildCustomSegments, evenCutsFromFirst, moveCut, removeCut, segmentIndexAt, type SegmentMode } from './practice/customSegments.ts'
+import { normalizePracticeState, type SavedPracticeState, type TempoSource } from './practice/savedPractice'
 import { safeStorage } from './practice/safeStorage'
+import { ExternalAudioPanel, type AlignStatus } from './practice/ExternalAudioPanel.tsx'
+import {
+  EXTERNAL_AUDIO_ACCEPT,
+  externalTimeAt,
+  guessOffsetBetweenFiles,
+  isExternalAudioFile,
+} from './practice/externalAudio.ts'
 import {
   applyBoundaryOffsets,
   buildLearningSegments,
@@ -14,7 +33,8 @@ import {
 } from './practice/beatTimeline'
 
 const ALLOWED_EXTENSIONS = ['mp4', 'mov', 'webm']
-const SPEEDS = [0.5, 0.65, 0.8, 1] as const
+// Slow motion only: nothing above 1×. 0.25/0.35 were added for hard sections.
+const SPEEDS = [0.25, 0.35, 0.5, 0.65, 0.8, 1] as const
 type VideoOrientation = 'landscape' | 'portrait' | 'square'
 type DisplayMode = 'contain' | 'cover'
 type PlaybackMode = 'loop' | 'continuous'
@@ -25,7 +45,6 @@ type RecordingStatus = 'idle' | 'countdown' | 'recording' | 'processing' | 'read
 const DEFAULT_TEACHER_FRAMING: TeacherFraming = { zoom: 1, panX: 0, panY: 0 }
 const MIN_TEACHER_ZOOM = 1
 const MAX_TEACHER_ZOOM = 3
-const TEACHER_ZOOM_STEP = 0.25
 const RECORDING_WIDTH = 1280
 const RECORDING_HEIGHT = 720
 const RECORDING_FPS = 30
@@ -65,32 +84,36 @@ function LandingPage({ onStart, language, setLanguage }: { onStart: () => void; 
 
   const guideSteps = language === 'zh' ? [
     ['选择视频', '打开本地 MP4、MOV 或 WebM。视频、摄像头和节拍分析均留在本机。'],
-    ['设置两个起点', '菜单 → 练习设置。移动进度条，先确认“音乐起点”，再移动到动作开始处确认“动作起点”；不用重新打开菜单。完成后自动按八拍分段，第1段带预备拍。'],
+    ['设置两个起点', '底栏点「音乐」→ 在进度条上点一下确认；再点「动作」→ 拖到动作开始处确认。点「自定义」可按第一小节长度均分。'],
     ['用底栏练习', '点速度展开档位。单段选3只练第3段；累加选3练第1–3段。段号独立于进度条，点箭头可收起或展开，放大视频不会藏住控制条。'],
-    ['调整画面或分段', '双指缩放，放大后拖动；轻点画面播放或暂停。菜单内可重置完整画面、默认大小和居中，也可校准节拍或打开自定义分段，拖进度条后确认分界。自动分析只估算稳定节拍，不识别舞蹈动作。'],
+    ['调整画面或分段', '双指缩放，放大后拖动；轻点画面播放或暂停。复杂分段与数拍选项在 ⋯。自动分析只估算稳定节拍，不识别舞蹈动作。'],
+    ['数拍与 BPM', '上传视频后点底栏「数拍」即可：自动识别 BPM、对齐老师动作和第 1 拍，并把原声静音，老师念 1 and 2 and … 8 and；速度放慢时间隔变长、声音不变调。只有 BPM 识别失败时才会提示，此时点按 BPM 数字手动输入。音色、层级、and 方式、原声模式等都在 ⋯ → 数拍与分段里。速度只提供慢放（0.25×–1×）。拖完进度条会自动播放。'],
     ['摄像头与录像', '摄像头按钮开关对比，自己的画面默认镜像。录像设置保留3、5、10秒倒计时。录像包含浏览器支持的老师音轨，不录麦克风，不上传；可回看、变速、下载WebM、删除或再录。刷新前请下载要保留的录像。'],
   ] : [
     ['Choose a video', 'Open a local MP4, MOV or WebM. Video, camera and beat analysis stay on this device.'],
-    ['Mark two starts', 'Menu → Practice setup. Seek and confirm Music start, then seek to the first move and confirm Dance start without reopening the menu. Both starts create eight-beat sections; section 1 includes preparation.'],
+    ['Mark two starts', 'On the dock tap ① Music, then tap the timeline to confirm; tap ② Dance and drag to where the moves begin, then confirm. Custom splits evenly by the length of your first section.'],
     ['Practice with the dock', 'Tap Speed for presets. Single + 3 practices section 3; Build-up + 3 practices 1–3. Section numbers are separate from the timeline. Use the arrow to fold them. Zoom never hides the dock.'],
-    ['Adjust the view or sections', 'Pinch to zoom; drag after zooming. Tap the video to play or pause. Menu offers Reset, beat calibration and Custom sections. To move a boundary, seek and confirm. Beat analysis estimates steady tempo, not choreography.'],
+    ['Adjust the view or sections', 'Pinch to zoom; drag after zooming. Tap the video to play or pause. Detailed section and count options live under ⋯. Beat analysis estimates steady tempo, not choreography.'],
+    ['Counts and BPM', 'Tap the BPM read-out to correct it (Enter confirms); Count ÷2 / ×2 there change the number-beat level. Tap Count for the teacher count; voice options live under ⋯ → Count & sections. Slow motion stretches the gaps but never the voice. Speeds are slow-motion only (0.25×–1×); releasing the timeline resumes playback.'],
     ['Camera and recording', 'Camera toggles comparison; self-view is mirrored by default. Recording settings retain 3, 5 and 10 second countdowns. Record supported teacher audio, never the microphone. Review, change review speed, download WebM, delete or record again. Download before refreshing; nothing is uploaded.'],
   ]
 
   return (
     <main className="landing-shell">
       <section className="cover-hero">
-        <img className="cover-artwork" src={`${import.meta.env.BASE_URL}image/branding/frametune-hero-streetdance.png`} alt={text('帧琢 FrameTune 街舞练习品牌主视觉，展现舞者连续动作轨迹', 'FrameTune brand artwork showing a street dancer through a sequence of movement trails')} />
+        <CoverStage label={text('帧琢 FrameTune 封面：街舞舞者随节拍甩出金色残影', 'FrameTune cover: a street dancer throwing gold afterimages on the beat')} />
         <div className="cover-controls">
           <span className="cover-beta">{text('测试版', 'Beta')}</span>
-          <div className="language-switch" aria-label="Language">
+          <div className="language-switch seg-pill" role="group" aria-label="Language">
             <button type="button" className={language === 'zh' ? 'active' : ''} aria-pressed={language === 'zh'} onClick={() => setLanguage('zh')}>中文</button>
-            <span aria-hidden="true">/</span>
             <button type="button" className={language === 'en' ? 'active' : ''} aria-pressed={language === 'en'} onClick={() => setLanguage('en')}>EN</button>
           </div>
-          <button type="button" className="guide-button" onClick={() => setGuideOpen(true)}>{language === 'zh' ? '使用说明' : 'How it works'}</button>
         </div>
-        <button type="button" className="cover-start-button" onClick={onStart}>{language === 'zh' ? '开始练习' : 'Start practicing'}<span aria-hidden="true">→</span></button>
+        <h1 className="cover-title" style={{ backgroundImage: `url("${import.meta.env.BASE_URL}image/branding/cover/cover-title.webp")` }}><span>{text('帧琢 FrameTune · 一帧一磨，雕琢姿态', 'FrameTune · Frame by frame, refine every move')}</span></h1>
+        <div className="cover-cta">
+          <button type="button" className="cover-start-button btn-primary" onClick={onStart}>{language === 'zh' ? '开始练习' : 'Start practicing'}<span className="arrow" aria-hidden="true">→</span></button>
+          <button type="button" className="guide-button btn-quiet" onClick={() => setGuideOpen(true)}>{language === 'zh' ? '使用说明' : 'How it works'}</button>
+        </div>
       </section>
 
       {guideOpen && <div className="guide-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setGuideOpen(false) }}>
@@ -116,6 +139,11 @@ function App() {
   const recordingAudioSourceRef = useRef<MediaStreamAudioSourceNode | null>(null)
   const recordingAudioGainRef = useRef<GainNode | null>(null)
   const recordingAudioDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null)
+  /** Teacher soundtrack via Web Audio (not video.muted) so iOS keeps the page audio session alive for count TTS. */
+  const playbackAudioContextRef = useRef<AudioContext | null>(null)
+  const playbackSourceRef = useRef<MediaElementAudioSourceNode | null>(null)
+  const playbackGainRef = useRef<GainNode | null>(null)
+  const playbackWiredVideoRef = useRef<HTMLVideoElement | null>(null)
   const recordingFrameRef = useRef<number | null>(null)
   const recordingTimerRef = useRef<number | null>(null)
   const recordingChunksRef = useRef<Blob[]>([])
@@ -132,13 +160,38 @@ function App() {
   const gestureRef = useRef(new TeacherGesture())
   const analysisRef = useRef<AbortController | null>(null)
   const fileRef = useRef<File | null>(null)
-  const [setupMode, setSetupMode] = useState(false)
-  const [setupStep, setSetupStep] = useState<'music' | 'dance'>('music')
-  const [markerOpen, setMarkerOpen] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const audioInputRef = useRef<HTMLInputElement | null>(null)
+  const externalAudioElRef = useRef<HTMLAudioElement | null>(null)
+  const externalAudioUrlRef = useRef<string | null>(null)
+  const externalFileRef = useRef<File | null>(null)
+  const audioOffsetRef = useRef(0)
+  const practiceKeyRef = useRef('')
+  const [pickHint, setPickHint] = useState<DanceRecord | null>(null)
+  const [notice, setNotice] = useState('')
+  const [externalAudioName, setExternalAudioName] = useState<string | null>(null)
+  const [externalAudioUrl, setExternalAudioUrl] = useState<string | null>(null)
+  const [audioOffset, setAudioOffset] = useState(0)
+  const [alignStatus, setAlignStatus] = useState<AlignStatus>('idle')
+  const [alignScore, setAlignScore] = useState<number | null>(null)
+  /** Bottom-bar two-step (or custom first-section) mark mode: click Music/Dance/自定义 → highlight bar → confirm on pointerup. */
+  const [markKind, setMarkKind] = useState<null | 'music' | 'dance' | 'customFirst'>(null)
   const [dockExpanded, setDockExpanded] = useState(true)
   const [dockHint, setDockHint] = useState(() => safeStorage.getItem('adl-dock-hint') !== 'dismissed')
-  const [menuPage, setMenuPage] = useState<'main' | 'tempo' | 'custom' | 'sound' | 'recording' | 'view' | 'help'>('main')
-  const [tempoStatus, setTempoStatus] = useState<'analyzing' | 'auto' | 'manual' | 'editing' | 'unavailable'>('manual')
+  const [menuPage, setMenuPage] = useState<'practice' | 'recording' | 'help' | 'saved' | 'audio'>('practice')
+  const [sideRailOpen, setSideRailOpen] = useState(false)
+  const [tempoStatus, setTempoStatus] = useState<TempoStatus>('manual')
+  const [tempoSource, setTempoSource] = useState<TempoSource>('unset')
+  const [tempoPhase, setTempoPhase] = useState<TempoPhase>('')
+  const [tempoAlternatives, setTempoAlternatives] = useState<number[]>([])
+  const [bpmEditorOpen, setBpmEditorOpen] = useState(false)
+  const [audioOnsets, setAudioOnsets] = useState<TimedEvent[]>([])
+  const [segmentMode, setSegmentMode] = useState<SegmentMode>('beats')
+  const [customCuts, setCustomCuts] = useState<number[]>([])
+  const [exportingCount, setExportingCount] = useState(false)
+  const timelineRef = useRef<HTMLInputElement>(null)
+  const scrubResumeRef = useRef<() => void>(() => {})
+  const onsetRequestedRef = useRef('')
   const [tempoFailure, setTempoFailure] = useState('')
   const [confirmedTempoMode, setConfirmedTempoMode] = useState<SavedPracticeState['tempoMode']>('unset')
   const loopTimerRef = useRef<number | null>(null)
@@ -149,6 +202,9 @@ function App() {
   const [fileName, setFileName] = useState('')
   const [fileSize, setFileSize] = useState(0)
   const [practiceStorageKey, setPracticeStorageKey] = useState('')
+  practiceKeyRef.current = practiceStorageKey
+  audioOffsetRef.current = audioOffset
+  externalAudioUrlRef.current = externalAudioUrl
   const [duration, setDuration] = useState(0)
   const [currentTime, setCurrentTime] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -176,7 +232,7 @@ function App() {
   const [formalStartLabel, setFormalStartLabel] = useState('')
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0)
   const [rangeMode, setRangeMode] = useState<PracticeRangeMode>('current')
-  const [playbackMode, setPlaybackMode] = useState<PlaybackMode>('loop')
+  const [playbackMode, setPlaybackMode] = useState<PlaybackMode>('continuous')
   const [boundaryOffsets, setBoundaryOffsets] = useState<number[]>([])
   const [selectedBoundaryIndex, setSelectedBoundaryIndex] = useState(0)
   const [isLoopWaiting, setIsLoopWaiting] = useState(false)
@@ -201,15 +257,130 @@ function App() {
   const renderDisplayMode: DisplayMode = compareMode || (isFullscreen && orientation === 'portrait') ? 'contain' : displayMode
   const teacherFraming = compareMode ? splitTeacherFraming : singleTeacherFraming
   const canPanTeacher = teacherFraming.zoom > MIN_TEACHER_ZOOM || (!compareMode && renderDisplayMode === 'cover')
+  // Eight-beat sections need music+dance markers only. While tempoStatus is still analyzing/unavailable,
+  // use the current bpm state (default 100, last value, or in-editor value) as a temporary song tempo;
+  // real auto/manual confirmation rebuilds via the same bpm dependency.
+  const segmentBpm = bpm > 0 ? bpm : 100
   const naturalLearningSegments = useMemo(() => (
-    firstBeatTime === null || !firstBeatConfirmed || formalStartTime === null || !duration || (tempoStatus !== 'auto' && tempoStatus !== 'manual' && !(tempoStatus === 'editing' && confirmedTempoMode !== 'unset'))
-      ? [] : buildLearningSegments(duration, formalStartTime, firstBeatTime, bpm)
-  ), [bpm, confirmedTempoMode, duration, firstBeatConfirmed, firstBeatTime, formalStartTime, tempoStatus])
-  const learningSegments = useMemo(() => (
-    firstBeatTime === null ? naturalLearningSegments : applyBoundaryOffsets(naturalLearningSegments, boundaryOffsets, firstBeatTime, bpm)
-  ), [boundaryOffsets, bpm, firstBeatTime, naturalLearningSegments])
+    firstBeatTime === null || !firstBeatConfirmed || formalStartTime === null || !duration
+      ? [] : buildLearningSegments(duration, formalStartTime, firstBeatTime, segmentBpm)
+  ), [duration, firstBeatConfirmed, firstBeatTime, formalStartTime, segmentBpm])
+  const beatSegments = useMemo(() => (
+    firstBeatTime === null ? naturalLearningSegments : applyBoundaryOffsets(naturalLearningSegments, boundaryOffsets, firstBeatTime, segmentBpm)
+  ), [boundaryOffsets, firstBeatTime, naturalLearningSegments, segmentBpm])
+  // The two segmentations are stored independently; BPM changes only ever touch the beat-based one.
+  const customSegments = useMemo(() => buildCustomSegments(customCuts, duration), [customCuts, duration])
+  const learningSegments = segmentMode === 'custom' ? customSegments : beatSegments
   const safeSegmentIndex = Math.min(currentSegmentIndex, Math.max(0, learningSegments.length - 1))
-  const practiceRange = useMemo(() => getPracticeRange(rangeMode, learningSegments, safeSegmentIndex, duration, bpm), [bpm, duration, learningSegments, rangeMode, safeSegmentIndex])
+  const practiceRange = useMemo(() => getPracticeRange(rangeMode, learningSegments, safeSegmentIndex, duration, segmentBpm, segmentMode === 'beats'), [duration, learningSegments, rangeMode, safeSegmentIndex, segmentBpm, segmentMode])
+
+  const coach = useCountCoach({
+    videoRef, videoKey: practiceStorageKey, videoUrl, duration,
+    bpm: tempoStatus === 'auto' || tempoStatus === 'manual' ? bpm : null,
+    musicStart: firstBeatConfirmed ? firstBeatTime : null, danceStart: formalStartTime, audioOnsets, audioCandidates: tempoAlternatives,
+  })
+  // While the count is audible the video's own sound is muted / ducked (setting 数拍时原声) via GainNode — never video.muted (iOS muted kills the whole page audio session, including count TTS).
+  const nativeGainRef = useRef(1)
+  nativeGainRef.current = coach.nativeGain
+  const teacherEffectiveGain = useCallback(() => (externalAudioUrlRef.current || isMuted ? 0 : volume * nativeGainRef.current), [externalAudioUrl, isMuted, volume])
+  const applyTeacherGain = useCallback(() => {
+    const effective = teacherEffectiveGain()
+    if (playbackGainRef.current) playbackGainRef.current.gain.value = effective
+    if (recordingAudioGainRef.current) recordingAudioGainRef.current.gain.value = effective
+    const video = videoRef.current
+    if (video) {
+      // Keep element unmuted so Safari's audio session stays open for Web Audio count voice.
+      video.volume = 1
+      video.muted = false
+    }
+    ;(window as unknown as { __adlTeacherGain?: number }).__adlTeacherGain = effective
+  }, [teacherEffectiveGain])
+  // Wire MediaElementSource once per video element (key={videoUrl}). StrictMode-safe: reuse if already wired to this element; do not tear down on effect re-run.
+  useEffect(() => {
+    if (!videoUrl) {
+      const ctx = playbackAudioContextRef.current
+      try { playbackSourceRef.current?.disconnect() } catch { /* ignore */ }
+      try { playbackGainRef.current?.disconnect() } catch { /* ignore */ }
+      playbackSourceRef.current = null
+      playbackGainRef.current = null
+      playbackWiredVideoRef.current = null
+      playbackAudioContextRef.current = null
+      if (ctx && ctx.state !== 'closed') void ctx.close().catch(() => undefined)
+      return
+    }
+    const video = videoRef.current
+    if (!video) return
+    if (playbackWiredVideoRef.current === video && playbackGainRef.current && playbackAudioContextRef.current?.state !== 'closed') {
+      applyTeacherGain()
+      void playbackAudioContextRef.current?.resume().catch(() => undefined)
+      return
+    }
+    const prevCtx = playbackAudioContextRef.current
+    if (prevCtx && prevCtx.state !== 'closed') {
+      try { playbackSourceRef.current?.disconnect() } catch { /* ignore */ }
+      try { playbackGainRef.current?.disconnect() } catch { /* ignore */ }
+      playbackSourceRef.current = null
+      playbackGainRef.current = null
+      playbackWiredVideoRef.current = null
+      playbackAudioContextRef.current = null
+      void prevCtx.close().catch(() => undefined)
+    }
+    if (typeof AudioContext === 'undefined') return
+    const ctx = new AudioContext({ latencyHint: 'interactive' })
+    let source: MediaElementAudioSourceNode
+    try {
+      source = ctx.createMediaElementSource(video)
+    } catch {
+      // Element already had a MediaElementSource (e.g. HMR). Fall back to element volume path.
+      void ctx.close().catch(() => undefined)
+      video.volume = teacherEffectiveGain()
+      video.muted = false
+      ;(window as unknown as { __adlTeacherGain?: number }).__adlTeacherGain = teacherEffectiveGain()
+      return
+    }
+    const gainNode = ctx.createGain()
+    gainNode.gain.value = teacherEffectiveGain()
+    source.connect(gainNode)
+    gainNode.connect(ctx.destination)
+    playbackAudioContextRef.current = ctx
+    playbackSourceRef.current = source
+    playbackGainRef.current = gainNode
+    playbackWiredVideoRef.current = video
+    video.volume = 1
+    video.muted = false
+    ;(window as unknown as { __adlTeacherGain?: number }).__adlTeacherGain = gainNode.gain.value
+    const resume = () => { void ctx.resume().catch(() => undefined) }
+    resume()
+    video.addEventListener('play', resume)
+    return () => {
+      video.removeEventListener('play', resume)
+      // Keep graph alive across StrictMode re-run; real teardown happens when videoUrl changes (above) or unmount (below).
+    }
+  }, [videoUrl, applyTeacherGain, teacherEffectiveGain])
+  useEffect(() => () => {
+    const ctx = playbackAudioContextRef.current
+    try { playbackSourceRef.current?.disconnect() } catch { /* ignore */ }
+    try { playbackGainRef.current?.disconnect() } catch { /* ignore */ }
+    playbackSourceRef.current = null
+    playbackGainRef.current = null
+    playbackWiredVideoRef.current = null
+    playbackAudioContextRef.current = null
+    if (ctx && ctx.state !== 'closed') void ctx.close().catch(() => undefined)
+    try { externalAudioElRef.current?.pause() } catch { /* ignore */ }
+    if (externalAudioUrlRef.current) URL.revokeObjectURL(externalAudioUrlRef.current)
+    externalAudioUrlRef.current = null
+    externalAudioElRef.current = null
+  }, [])
+  useEffect(() => { applyTeacherGain() }, [coach.nativeGain, volume, isMuted, videoUrl, applyTeacherGain, externalAudioUrl])
+
+  // Music onsets lock the count's phase to the track. They are analysed lazily the first time the count is used.
+  useEffect(() => {
+    const file = fileRef.current
+    if (!file || !videoUrl || !(coach.prefs.enabled || coach.prefs.overlay) || audioOnsets.length || tempoStatus === 'analyzing' || onsetRequestedRef.current === practiceStorageKey) return
+    onsetRequestedRef.current = practiceStorageKey
+    const requestedFor = practiceStorageKey
+    void analyzeVideoAudioCached(file, new AbortController().signal).then(result => { if (practiceKeyRef.current === requestedFor) setAudioOnsets(result.onsets) }).catch(() => undefined) // a late result of the previous video must not land on the new one
+  }, [audioOnsets.length, coach.prefs.enabled, coach.prefs.overlay, practiceStorageKey, tempoStatus, videoUrl])
 
   const cancelPendingLoop = useCallback(() => {
     if (loopTimerRef.current !== null) window.clearTimeout(loopTimerRef.current)
@@ -298,17 +469,43 @@ function App() {
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
   }, [])
 
+  // Floating panel: drag its header down to dismiss (plus Close / Escape / tap on the video).
+  const sheetDragRef = useRef<{ id: number; y: number } | null>(null)
+  const startSheetDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if ((event.target as Element).closest('button')) return
+    sheetDragRef.current = { id: event.pointerId, y: event.clientY }
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+  }
+  const moveSheetDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = sheetDragRef.current
+    if (!drag || drag.id !== event.pointerId) return
+    const sheet = event.currentTarget.parentElement
+    const dy = Math.max(0, event.clientY - drag.y)
+    if (sheet) { sheet.style.transition = 'none'; sheet.style.transform = dy ? `translateY(${dy}px)` : '' }
+  }
+  const endSheetDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = sheetDragRef.current
+    if (!drag || drag.id !== event.pointerId) return
+    sheetDragRef.current = null
+    const sheet = event.currentTarget.parentElement
+    if (sheet) { sheet.style.transition = ''; sheet.style.transform = '' }
+    if (event.type === 'pointerup' && event.clientY - drag.y > 70) setSettingsDrawerOpen(false)
+  }
+
   useEffect(() => {
-    if (!settingsDrawerOpen) return
+    if (!settingsDrawerOpen && !sideRailOpen) return
     const handleDrawerKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setSettingsDrawerOpen(false)
+      if (event.key === 'Escape') { setSettingsDrawerOpen(false); setSideRailOpen(false) }
     }
     const closeOnUnrelatedClick = (event: MouseEvent) => {
       const target = event.target as Node | null
       if (!target) return
       if (settingsDrawerRef.current?.contains(target)) return
-      if (playerRef.current?.contains(target)) return
-      setSettingsDrawerOpen(false)
+      if ((event.target as Element | null)?.closest?.('.menu-cluster')) return
+      // The dock stays usable while a panel floats over the video (scrub to move a boundary, play, etc.).
+      if ((event.target as Element | null)?.closest?.('.practice-dock') && settingsDrawerOpen) return
+      if (playerRef.current?.contains(target) && settingsDrawerOpen) { setSettingsDrawerOpen(false); return }
+      if (!playerRef.current?.contains(target)) { setSettingsDrawerOpen(false); setSideRailOpen(false) }
     }
     window.addEventListener('keydown', handleDrawerKeyDown)
     document.addEventListener('mousedown', closeOnUnrelatedClick)
@@ -316,7 +513,7 @@ function App() {
       window.removeEventListener('keydown', handleDrawerKeyDown)
       document.removeEventListener('mousedown', closeOnUnrelatedClick)
     }
-  }, [settingsDrawerOpen])
+  }, [settingsDrawerOpen, sideRailOpen])
 
   useEffect(() => {
     if (!reviewOpen) return
@@ -335,8 +532,10 @@ function App() {
       schemaVersion: 2, tempoMode: confirmedTempoMode,
       bpm, firstBeatTime, firstBeatConfirmed, rawFormalStartTime, formalStartTime, formalStartLabel,
       currentSegmentIndex: tempoStatus === 'analyzing' || tempoStatus === 'editing' ? currentSegmentIndex : safeSegmentIndex, rangeMode, playbackMode, boundaryOffsets,
+      tempoSource, segmentMode, customCuts,
     } satisfies SavedPracticeState))
-  }, [boundaryOffsets, bpm, confirmedTempoMode, currentSegmentIndex, firstBeatConfirmed, firstBeatTime, formalStartLabel, formalStartTime, playbackMode, practiceStorageKey, rangeMode, rawFormalStartTime, safeSegmentIndex, tempoStatus])
+    void patchDance(danceId(practiceStorageKey), { practice: safeStorage.getItem(practiceStorageKey) ?? undefined, duration: duration || undefined }, { name: fileName, size: fileSize })
+  }, [duration, fileName, fileSize, customCuts, segmentMode, tempoSource, boundaryOffsets, bpm, confirmedTempoMode, currentSegmentIndex, firstBeatConfirmed, firstBeatTime, formalStartLabel, formalStartTime, playbackMode, practiceStorageKey, rangeMode, rawFormalStartTime, safeSegmentIndex, tempoStatus])
 
   const seekBy = useCallback((seconds: number) => {
     const video = videoRef.current
@@ -367,23 +566,23 @@ function App() {
       return
     }
     try {
-      if (!setupMode && !(settingsDrawerOpen && menuPage === 'custom') && (video.currentTime >= practiceRange.endTime - 0.04 || video.currentTime < practiceRange.startTime)) video.currentTime = practiceRange.startTime
+      if (!markKind && !(settingsDrawerOpen && menuPage === 'practice') && (video.currentTime >= practiceRange.endTime - 0.04 || video.currentTime < practiceRange.startTime)) video.currentTime = practiceRange.startTime
       await video.play()
       setError('')
     } catch {
       setError(text('无法播放此视频。请确认文件格式受浏览器支持。', 'This video could not be played. Check that its format is supported by your browser.'))
     }
-  }, [cancelPendingLoop, isLoopWaiting, language, practiceRange.endTime, practiceRange.startTime, videoUrl, setupMode, menuPage, settingsDrawerOpen])
+  }, [cancelPendingLoop, isLoopWaiting, language, practiceRange.endTime, practiceRange.startTime, videoUrl, markKind, menuPage, settingsDrawerOpen])
 
   const changeSegment = useCallback((index: number) => {
     if (!learningSegments.length) return
     cancelPendingLoop()
     const nextIndex = Math.min(Math.max(0, index), learningSegments.length - 1)
     setCurrentSegmentIndex(nextIndex)
-    const nextStart = getPracticeRange(rangeMode, learningSegments, nextIndex, duration, bpm).startTime
+    const nextStart = getPracticeRange(rangeMode, learningSegments, nextIndex, duration, bpm, segmentMode === 'beats').startTime
     if (videoRef.current) { videoRef.current.pause(); videoRef.current.currentTime = nextStart }
     setCurrentTime(nextStart)
-  }, [bpm, cancelPendingLoop, duration, learningSegments, rangeMode])
+  }, [bpm, cancelPendingLoop, duration, learningSegments, rangeMode, segmentMode])
 
   const changePlaybackMode = useCallback((mode: PlaybackMode) => {
     cancelPendingLoop()
@@ -392,7 +591,7 @@ function App() {
 
   const handleTimeUpdate = (video: HTMLVideoElement) => {
     setCurrentTime(video.currentTime)
-    if (setupMode || (settingsDrawerOpen && menuPage === 'custom') || !learningSegments.length || video.paused || loopPendingRef.current || video.currentTime < practiceRange.endTime - 0.04) return
+    if (markKind || (settingsDrawerOpen && menuPage === 'practice') || !learningSegments.length || video.paused || loopPendingRef.current || video.currentTime < practiceRange.endTime - 0.04) return
     if (playbackMode === 'continuous') {
       video.pause()
       video.currentTime = practiceRange.endTime
@@ -447,7 +646,136 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [changePlaybackMode, changeSegment, playbackMode, safeSegmentIndex, seekBy, toggleFullscreen, toggleMirror, togglePlayback])
 
-  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+
+  const clearExternalAudio = useCallback(() => {
+    const el = externalAudioElRef.current
+    if (el) { try { el.pause() } catch { /* ignore */ }; el.removeAttribute('src'); el.load() }
+    externalAudioElRef.current = null
+    externalFileRef.current = null
+    if (externalAudioUrlRef.current) URL.revokeObjectURL(externalAudioUrlRef.current)
+    externalAudioUrlRef.current = null
+    setExternalAudioUrl(null)
+    setExternalAudioName(null)
+    setAudioOffset(0)
+    audioOffsetRef.current = 0
+    setAlignStatus('idle')
+    setAlignScore(null)
+    // Restore native gain path on next applyTeacherGain.
+    queueMicrotask(() => applyTeacherGain())
+  }, [applyTeacherGain])
+
+  const syncExternalAudio = useCallback((forceSeek = false) => {
+    const video = videoRef.current
+    const audio = externalAudioElRef.current
+    if (!video || !audio || !externalAudioUrlRef.current) return
+    const target = externalTimeAt(video.currentTime, audioOffsetRef.current)
+    audio.playbackRate = video.playbackRate || 1
+    audio.volume = isMuted ? 0 : volume
+    if (!(audio.duration > 0) || target < 0 || target > audio.duration) {
+      if (!audio.paused) audio.pause()
+      return
+    }
+    if (forceSeek || Math.abs(audio.currentTime - target) > 0.12) {
+      try { audio.currentTime = target } catch { /* ignore seek errors while loading */ }
+    }
+    if (!video.paused && !video.ended) {
+      if (audio.paused) void audio.play().catch(() => undefined)
+    } else if (!audio.paused) {
+      audio.pause()
+    }
+  }, [isMuted, volume])
+
+  // Keep the replacement soundtrack locked to the teacher video clock (play/pause/seek/rate).
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video || !externalAudioUrl) return
+    const bump = () => syncExternalAudio(true)
+    const soft = () => syncExternalAudio(false)
+    video.addEventListener('play', bump)
+    video.addEventListener('pause', bump)
+    video.addEventListener('seeking', bump)
+    video.addEventListener('seeked', bump)
+    video.addEventListener('ratechange', bump)
+    video.addEventListener('timeupdate', soft)
+    applyTeacherGain()
+    syncExternalAudio(true)
+    return () => {
+      video.removeEventListener('play', bump)
+      video.removeEventListener('pause', bump)
+      video.removeEventListener('seeking', bump)
+      video.removeEventListener('seeked', bump)
+      video.removeEventListener('ratechange', bump)
+      video.removeEventListener('timeupdate', soft)
+    }
+  }, [externalAudioUrl, audioOffset, syncExternalAudio, applyTeacherGain, speed, isMuted, volume])
+
+  const runExternalAlign = useCallback(async () => {
+    const videoFile = fileRef.current
+    const audioFile = externalFileRef.current
+    if (!videoFile || !audioFile) return
+    setAlignStatus('running')
+    setAlignScore(null)
+    try {
+      const guess = await guessOffsetBetweenFiles(videoFile, audioFile)
+      setAudioOffset(guess.offsetSeconds)
+      audioOffsetRef.current = guess.offsetSeconds
+      setAlignScore(guess.score)
+      setAlignStatus('done')
+      syncExternalAudio(true)
+    } catch {
+      setAlignStatus('failed')
+    }
+  }, [syncExternalAudio])
+
+  const handleExternalAudioChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    if (!isExternalAudioFile(file)) {
+      setError(text('请选择 mp3 / aac / wav 等音频文件。', 'Choose an mp3 / aac / wav audio file.'))
+      return
+    }
+    if (!videoUrl || !fileRef.current) {
+      setError(text('请先选择舞蹈视频，再上传外挂音频。', 'Choose a dance video before uploading a soundtrack.'))
+      return
+    }
+    clearExternalAudio()
+    const url = URL.createObjectURL(file)
+    externalFileRef.current = file
+    externalAudioUrlRef.current = url
+    setExternalAudioUrl(url)
+    setExternalAudioName(file.name)
+    setAudioOffset(0)
+    audioOffsetRef.current = 0
+    setAlignStatus('idle')
+    setAlignScore(null)
+    setError('')
+    const audio = new Audio()
+    audio.preload = 'auto'
+    audio.src = url
+    externalAudioElRef.current = audio
+    applyTeacherGain()
+    const onReady = () => { syncExternalAudio(true); void runExternalAlign() }
+    if (audio.readyState >= 1) onReady()
+    else audio.addEventListener('loadedmetadata', onReady, { once: true })
+    // Key / studio originals often decode cleaner than the phone room mix — re-detect BPM from this track.
+    runTempoAnalysis(file, bpm, { force: true })
+  }
+
+  /** "Change video": save this video's alignment, stop playback, then open the file picker. */
+  const openVideoPicker = (hint: DanceRecord | null = null) => {
+    if (recordingStatus === 'recording' || recordingStatus === 'countdown' || recordingStatus === 'processing') return
+    cancelPendingLoop()
+    videoRef.current?.pause()
+    if (practiceStorageKey) {
+      void patchDance(danceId(practiceStorageKey), { practice: safeStorage.getItem(practiceStorageKey) ?? undefined, count: safeStorage.getItem(countKeyOf(practiceStorageKey)) ?? undefined, duration: duration || undefined }, { name: fileName, size: fileSize })
+    }
+    setPickHint(hint); setNotice('')
+    setSettingsDrawerOpen(false)
+    fileInputRef.current?.click()
+  }
+
+  const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
     const extension = file.name.split('.').pop()?.toLowerCase() ?? ''
@@ -458,9 +786,16 @@ function App() {
     }
     cancelPendingLoop()
     analysisRef.current?.abort()
+    onsetRequestedRef.current = ''
+    if (pickHint) {
+      const same = `${file.name}:${file.size}` === pickHint.id
+      setNotice(same ? text(`已恢复「${pickHint.name}」的对齐`, `Restored alignment for "${pickHint.name}"`) : text(`所选文件和保存的「${pickHint.name}」不一致，按新视频处理`, `The chosen file does not match the saved "${pickHint.name}"; treated as a new video`))
+      setPickHint(null)
+    }
     fileRef.current = file
     if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
     const storageKey = videoStorageKey(file)
+    await hydrateFromDance(storageKey)
     const saved = readPracticeState(storageKey)
     setConfirmedTempoMode(saved.tempoMode)
     const url = URL.createObjectURL(file)
@@ -469,53 +804,125 @@ function App() {
     setBpm(saved.bpm); setBpmInput(saved.tempoMode === 'manual' ? String(saved.bpm) : ''); setFirstBeatTime(saved.firstBeatTime); setFirstBeatConfirmed(saved.firstBeatConfirmed)
     setRawFormalStartTime(saved.rawFormalStartTime); setFormalStartTime(saved.formalStartTime); setFormalStartLabel(saved.formalStartLabel)
     setCurrentSegmentIndex(saved.currentSegmentIndex); setRangeMode(saved.rangeMode); setPlaybackMode(saved.playbackMode); setBoundaryOffsets(saved.boundaryOffsets); setSelectedBoundaryIndex(0)
+    setSegmentMode(saved.segmentMode); setCustomCuts(saved.customCuts); setTempoSource(saved.tempoMode === 'auto' && saved.tempoSource === 'unset' ? 'onset' : saved.tempoSource); setAudioOnsets([]); setTempoAlternatives([]); setBpmEditorOpen(false); setTempoPhase(''); onsetRequestedRef.current = ''
     setSingleTeacherFraming(DEFAULT_TEACHER_FRAMING); setSplitTeacherFraming(DEFAULT_TEACHER_FRAMING); setDisplayMode('contain')
-    setSetupMode(false); setMarkerOpen(false); setSettingsDrawerOpen(false); setMenuPage('main'); setDockExpanded(true); setDuration(0); setCurrentTime(0); setIsPlaying(false); setOrientation('landscape'); setError('')
+    setMarkKind(null); setSettingsDrawerOpen(false); setSideRailOpen(false); setMenuPage('practice'); setDockExpanded(true); setDuration(0); setCurrentTime(0); setIsPlaying(false); setOrientation('landscape'); setError('')
     gestureRef.current.reset()
     if (saved.tempoMode === 'manual') { setTempoStatus('manual'); setTempoFailure('') }
     else runTempoAnalysis(file, saved.bpm)
     event.target.value = ''
   }
 
-  const runTempoAnalysis = (file: File, previousBpm?: number) => {
+  const runTempoAnalysis = (file: File, previousBpm?: number, opts?: { force?: boolean }) => {
     analysisRef.current?.abort()
     const controller = new AbortController()
     analysisRef.current = controller
     setTempoStatus('analyzing'); setTempoFailure(''); setBpmInput(''); setBpmError('')
-    void analyzeVideoTempo(file, controller.signal).then(result => {
-      if (controller.signal.aborted) return
-      if (!result || result.confidence < .2) { setTempoStatus('unavailable'); setTempoFailure('unstable'); return }
+    setTempoPhase('catalog')
+    setBpmEditorOpen(false) // never force a typing box into the start-markers row
+    const adopt = (value: number, source: TempoSource) => {
       cancelPendingLoop()
-      setBpm(result.bpm); setBpmInput(String(result.bpm));
-      if (previousBpm === undefined || Math.abs(previousBpm - result.bpm) > Math.max(.5, previousBpm * .01)) { setBoundaryOffsets([]); setSelectedBoundaryIndex(0) }
-      setTempoStatus('auto'); setConfirmedTempoMode('auto')
-    }).catch((failure: unknown) => {
-      if (!controller.signal.aborted) { setTempoStatus('unavailable'); setTempoFailure(failure instanceof Error ? failure.message : 'analysis-failed') }
-    })
+      setBpm(value); setBpmInput(String(value))
+      if (previousBpm === undefined || Math.abs(previousBpm - value) > Math.max(.5, previousBpm * .01)) { setBoundaryOffsets([]); setSelectedBoundaryIndex(0) }
+      setTempoStatus('auto'); setConfirmedTempoMode('auto'); setTempoSource(source); setTempoPhase('')
+      setBpmEditorOpen(false)
+    }
+    const paint = async () => {
+      await new Promise<void>(resolve => { requestAnimationFrame(() => resolve()) })
+      // Brief dwell so「正在匹配曲库 / 读取标签」is readable before the next step.
+      await new Promise<void>(resolve => setTimeout(resolve, 180))
+    }
+    void (async () => {
+      // 1) Filename/size catalog (matched-tempo.json) — first attempt; first success wins.
+      setTempoPhase('catalog'); await paint()
+      const matched = await lookupMatchedTempo(file)
+      if (controller.signal.aborted) return
+      if (matched) adopt(matched.bpm, 'matched')
+
+      // 2) Embedded tags (MP4 tmpo / ID3 TBPM) if catalog missed.
+      setTempoPhase('tag'); await paint()
+      const embedded = await readEmbeddedTempo(blobSource(file))
+      if (controller.signal.aborted) return
+      if (!matched && embedded) adopt(embedded.bpm, 'tag')
+
+      // 3) Onset auto-detect — always collect onsets; adopt BPM only if still unresolved.
+      setTempoPhase('onset'); await paint()
+      try {
+        const result = await analyzeVideoAudioCached(file, controller.signal, { force: opts?.force })
+        if (controller.signal.aborted) return
+        setAudioOnsets(result.onsets)
+        const prior = matched?.bpm ?? embedded?.bpm
+        const fromTempo = result.tempo ? [...(prior ? [result.tempo.bpm] : []), ...result.tempo.alternatives] : []
+        const candidates = [...fromTempo, ...(result.suggestions ?? [])].filter((value, index, all) =>
+          (!prior || Math.abs(value / prior - 1) > .02) && all.findIndex(o => Math.abs(o / value - 1) < .02) === index)
+        setTempoAlternatives(candidates.slice(0, 5))
+        if (matched || embedded) { setTempoPhase(''); return }
+        // Soft confidence; auto-adopt best suggestion; no forced typing box.
+        if (result.tempo && result.tempo.confidence >= .08) {
+          adopt(result.tempo.bpm, 'onset')
+          return
+        }
+        const soft = result.suggestions?.[0]
+        if (soft) {
+          adopt(soft, 'onset')
+          return
+        }
+        setTempoStatus('unavailable'); setTempoFailure('unstable'); setTempoPhase('')
+      } catch (failure: unknown) {
+        if (!controller.signal.aborted && !matched && !embedded) {
+          setTempoStatus('unavailable')
+          setTempoFailure(failure instanceof Error ? failure.message : 'analysis-failed')
+          setTempoPhase('')
+        } else if (!controller.signal.aborted) {
+          setTempoPhase('')
+        }
+      }
+    })()
   }
 
   const markTimelineStart = (kind: 'music' | 'dance') => {
-    if (kind === 'dance' && setupStep !== 'dance') return
     const time = videoRef.current?.currentTime ?? currentTime
     if (time >= duration - .25) { setError(text('起点需要放在视频结束之前。', 'Choose a start before the video ends.')); return }
+    if (kind === 'dance' && !firstBeatConfirmed) { setError(text('请先设置音乐起点。', 'Set music start first.')); return }
     if (kind === 'dance' && firstBeatTime !== null && time < firstBeatTime) { setError(text('动作起点不能早于音乐起点。', 'Dance start must be after music start.')); return }
     if (kind === 'music') {
       setFirstBeatTime(time); setFirstBeatConfirmed(true)
-      setSetupStep('dance')
-      if (formalStartTime !== null && formalStartTime < time) { setFormalStartTime(null); setRawFormalStartTime(null) }
+      if (formalStartTime !== null && formalStartTime < time) { setFormalStartTime(null); setRawFormalStartTime(null); setFormalStartLabel('') }
+      coach.updateSettings({ anchorMode: 'music' })
     } else {
       setRawFormalStartTime(time); setFormalStartTime(time)
       setFormalStartLabel(firstBeatTime === null ? '' : nearestBeatPoint(time, firstBeatTime, bpm).label)
+      coach.updateSettings({ anchorMode: 'dance' })
     }
-    setBoundaryOffsets([]); setSelectedBoundaryIndex(0); setCurrentSegmentIndex(0); setMarkerOpen(false); setError('')
+    setBoundaryOffsets([]); setSelectedBoundaryIndex(0); setCurrentSegmentIndex(0); setMarkKind(null); setError('')
     pauseAndSeek(time)
-    if (kind === 'dance') setSetupMode(false)
+  }
+
+  /** Confirm whatever markKind is active at the current playhead (bar click / release). */
+  const confirmMarkAtPlayhead = () => {
+    if (markKind === 'music') { markTimelineStart('music'); return }
+    if (markKind === 'dance') { markTimelineStart('dance'); return }
+    if (markKind === 'customFirst') {
+      const time = videoRef.current?.currentTime ?? currentTime
+      const cuts = evenCutsFromFirst(time, duration)
+      if (!cuts.length) { setError(text('第一小节太短或太长，请拖到合适位置再确认。', 'First section is too short or too long — drag, then confirm.')); return }
+      setCustomCuts(cuts); setSegmentMode('custom'); setCurrentSegmentIndex(0); setMarkKind(null); setError('')
+      pauseAndSeek(0)
+    }
+  }
+
+  const beginMark = (kind: 'music' | 'dance' | 'customFirst') => {
+    if (kind === 'dance' && !firstBeatConfirmed) { setError(text('请先设置音乐起点。', 'Set music start first.')); return }
+    cancelPendingLoop(); videoRef.current?.pause()
+    setError('')
+    setMarkKind(current => current === kind ? null : kind)
+    setSettingsDrawerOpen(false); setSideRailOpen(false)
   }
 
   const handleLoadedMetadata = () => {
     const video = videoRef.current
     if (!video) return
-    video.playbackRate = speed; video.volume = volume
+    video.playbackRate = speed; video.volume = 1; video.muted = false; applyTeacherGain()
     setOrientation(video.videoWidth === video.videoHeight ? 'square' : video.videoWidth > video.videoHeight ? 'landscape' : 'portrait')
     setDisplayMode('contain'); setSingleTeacherFraming(DEFAULT_TEACHER_FRAMING); setSplitTeacherFraming(DEFAULT_TEACHER_FRAMING)
     setDuration(Number.isFinite(video.duration) ? video.duration : 0)
@@ -552,16 +959,6 @@ function App() {
     else setSingleTeacherFraming((current) => clampTeacherFraming(updater(current), displayMode))
   }
 
-  const changeTeacherZoom = (delta: number) => {
-    setCurrentTeacherFraming((current) => ({ ...current, zoom: Number((current.zoom + delta).toFixed(2)) }))
-  }
-
-  const fitTeacherVideo = () => {
-    gestureRef.current.reset()
-    if (!compareMode) setDisplayMode('contain')
-    setCurrentTeacherFraming(() => DEFAULT_TEACHER_FRAMING)
-  }
-
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.pointerType === 'mouse' && event.button !== 0) return
     gestureRef.current.start(event.pointerId, event.clientX, event.clientY, clampTeacherFraming(teacherFraming))
@@ -585,47 +982,111 @@ function App() {
     return () => observer.disconnect()
   }, [compareMode, isFullscreen, videoUrl])
 
-  const applyBpm = () => {
-    const next = Number(bpmInput)
+  const applyBpm = (value?: number) => {
+    const next = value ?? Number(bpmInput)
     if (!Number.isFinite(next) || next < 40 || next > 240) { setBpmError(text('请输入 40–240 之间的 BPM。', 'Enter a BPM between 40 and 240.')); return }
     analysisRef.current?.abort()
     cancelPendingLoop(); videoRef.current?.pause()
-    setBpm(next); setBpmError(''); setTempoStatus('manual'); setConfirmedTempoMode('manual'); setTempoFailure(''); setBoundaryOffsets([]); setSelectedBoundaryIndex(0)
+    setBpm(next); setBpmInput(String(next)); setBpmError(''); setTempoStatus('manual'); setConfirmedTempoMode('manual'); setTempoSource('manual'); setTempoFailure(''); setTempoPhase(''); setBoundaryOffsets([]); setSelectedBoundaryIndex(0)
   }
   const selectPracticeRange = (mode: PracticeRangeMode) => {
     cancelPendingLoop(); setRangeMode(mode)
-    const nextStart = getPracticeRange(mode, learningSegments, safeSegmentIndex, duration, bpm).startTime
+    const nextStart = getPracticeRange(mode, learningSegments, safeSegmentIndex, duration, bpm, segmentMode === 'beats').startTime
     if (videoRef.current) { videoRef.current.pause(); videoRef.current.currentTime = nextStart }
     setCurrentTime(nextStart)
   }
-  const confirmSelectedBoundary = () => {
-    const naturalBoundary = naturalLearningSegments[selectedBoundaryIndex]?.endTime
+  const applyBoundaryAtTime = (index: number, time: number) => {
+    const naturalBoundary = naturalLearningSegments[index]?.endTime
     if (naturalBoundary === undefined) return
-    const before = learningSegments[selectedBoundaryIndex].startTime
-    const after = learningSegments[selectedBoundaryIndex + 1]?.endTime ?? duration
-    if (currentTime <= before + .25 || currentTime >= after - .25) { setError(text('请选择相邻分界之间的位置。', 'Choose a position between the neighboring boundaries.')); return }
+    const before = learningSegments[index]?.startTime
+    const after = learningSegments[index + 1]?.endTime ?? duration
+    if (before === undefined || time <= before + .25 || time >= after - .25) { setError(text('请选择相邻分界之间的位置。', 'Choose a position between the neighboring boundaries.')); return }
     setError('')
+    setSelectedBoundaryIndex(index)
     setBoundaryOffsets((current) => {
       const next = [...current]
-      next[selectedBoundaryIndex] = currentTime - naturalBoundary
+      next[index] = time - naturalBoundary
       return next
     })
   }
+  /** Instant write: scrub playhead → nearest (or selected) beat boundary. */
+  const applyBoundaryAtPlayhead = () => {
+    if (segmentMode !== 'beats' || learningSegments.length < 2) return
+    const time = videoRef.current?.currentTime ?? currentTime
+    let best = Math.min(selectedBoundaryIndex, learningSegments.length - 2)
+    let bestDist = Infinity
+    for (let i = 0; i < learningSegments.length - 1; i++) {
+      const d = Math.abs(time - learningSegments[i].endTime)
+      if (d < bestDist) { bestDist = d; best = i }
+    }
+    applyBoundaryAtTime(best, time)
+  }
+  const addCustomCut = () => {
+    const next = addCut(customCuts, videoRef.current?.currentTime ?? currentTime, duration)
+    if (!next) { setError(text('这里不能添加分界：离视频两端或已有分界太近。', 'Cannot add a cut here: too close to an edge or another cut.')); return }
+    setError(''); setCustomCuts(next); setCurrentSegmentIndex(0)
+  }
+  const moveCustomCut = (index: number, time: number) => {
+    const next = moveCut(customCuts, index, time, duration)
+    if (next) { setError(''); setCustomCuts(next) }
+    else setError(text('分界需与相邻分界至少相隔 0.5 秒。', 'Keep cuts at least 0.5 s apart.'))
+  }
+  const switchSegmentMode = (mode: SegmentMode) => {
+    if (mode === segmentMode) return
+    cancelPendingLoop(); videoRef.current?.pause()
+    setSegmentMode(mode); setCurrentSegmentIndex(0); setError('')
+    const start = mode === 'custom' ? 0 : naturalLearningSegments.length ? getPracticeRange(rangeMode, beatSegments, 0, duration, bpm, true).startTime : 0
+    if (videoRef.current) videoRef.current.currentTime = start
+    setCurrentTime(start)
+  }
+
+  // Timeline drag ends (mouse, touch or keyboard) → keep practising: resume playback, even from a pause.
+  const resumeAfterScrub = () => {
+    const video = videoRef.current
+    if (!video || !videoUrl) return
+    if (markKind || (settingsDrawerOpen && menuPage === 'practice') || recordingStatusRef.current === 'countdown' || recordingStatusRef.current === 'processing') return
+    const time = video.currentTime
+    if (learningSegments.length && (time < practiceRange.startTime - .001 || time >= practiceRange.endTime - .04)) setCurrentSegmentIndex(segmentIndexAt(learningSegments, time))
+    cancelPendingLoop()
+    void video.play().then(() => setError('')).catch(() => setError(text('无法播放此视频。请确认文件格式受浏览器支持。', 'This video could not be played. Check that its format is supported by your browser.')))
+  }
+  scrubResumeRef.current = resumeAfterScrub
+  useEffect(() => {
+    const input = timelineRef.current
+    if (!input) return
+    const done = () => scrubResumeRef.current()
+    input.addEventListener('change', done)
+    return () => input.removeEventListener('change', done)
+  }, [videoUrl, showLanding])
+
   const changeSpeed = (next: number) => {
     if (videoRef.current) videoRef.current.playbackRate = next
+    if (externalAudioElRef.current) externalAudioElRef.current.playbackRate = next
     setSpeed(next); safeStorage.setItem('adl-playback-speed', String(next))
   }
   const changeVolume = (event: ChangeEvent<HTMLInputElement>) => {
     const next = Number(event.target.value)
-    if (videoRef.current) { videoRef.current.volume = next; if (next > 0) videoRef.current.muted = false }
-    if (recordingAudioGainRef.current) recordingAudioGainRef.current.gain.value = videoRef.current?.muted ? 0 : next
-    setVolume(next); setIsMuted(next === 0); safeStorage.setItem('adl-volume', String(next))
+    const muted = next === 0
+    setVolume(next); setIsMuted(muted); safeStorage.setItem('adl-volume', String(next))
+    const effective = externalAudioUrlRef.current || muted ? 0 : next * nativeGainRef.current
+    if (playbackGainRef.current) playbackGainRef.current.gain.value = effective
+    if (recordingAudioGainRef.current) recordingAudioGainRef.current.gain.value = effective
+    if (videoRef.current) { videoRef.current.volume = 1; videoRef.current.muted = false }
+    const ext = externalAudioElRef.current
+    if (ext) ext.volume = muted ? 0 : next
+    ;(window as unknown as { __adlTeacherGain?: number }).__adlTeacherGain = effective
+    void playbackAudioContextRef.current?.resume().catch(() => undefined)
   }
   const toggleMute = () => {
-    if (!videoRef.current) return
-    videoRef.current.muted = !videoRef.current.muted
-    if (recordingAudioGainRef.current) recordingAudioGainRef.current.gain.value = videoRef.current.muted ? 0 : videoRef.current.volume
-    setIsMuted(videoRef.current.muted)
+    const next = !isMuted
+    setIsMuted(next)
+    const effective = externalAudioUrlRef.current || next ? 0 : volume * nativeGainRef.current
+    if (playbackGainRef.current) playbackGainRef.current.gain.value = effective
+    if (recordingAudioGainRef.current) recordingAudioGainRef.current.gain.value = effective
+    if (videoRef.current) { videoRef.current.volume = 1; videoRef.current.muted = false }
+    const ext = externalAudioElRef.current
+    if (ext) ext.volume = next ? 0 : volume
+    ;(window as unknown as { __adlTeacherGain?: number }).__adlTeacherGain = effective
   }
 
   const releaseCamera = useCallback(() => {
@@ -741,16 +1202,22 @@ function App() {
     try {
       const capturableTeacher = teacher as HTMLVideoElement & { captureStream?: () => MediaStream; mozCaptureStream?: () => MediaStream }
       const captureTeacherStream = capturableTeacher.captureStream?.() ?? capturableTeacher.mozCaptureStream?.()
-      if (!captureTeacherStream?.getAudioTracks().length || typeof AudioContext === 'undefined') throw new Error('teacher-audio-unavailable')
+      const externalEl = externalAudioElRef.current as (HTMLAudioElement & { captureStream?: () => MediaStream }) | null
+      const externalStream = externalAudioUrlRef.current && externalEl?.captureStream ? externalEl.captureStream() : null
+      const sourceStream = (externalStream?.getAudioTracks().length ? externalStream : captureTeacherStream) ?? null
+      if (!sourceStream?.getAudioTracks().length || typeof AudioContext === 'undefined') throw new Error('teacher-audio-unavailable')
       const audioContext = new AudioContext()
-      teacherCaptureStreamRef.current = captureTeacherStream
+      teacherCaptureStreamRef.current = sourceStream
       recordingAudioContextRef.current = audioContext
       await audioContext.resume()
       if (audioContext.state !== 'running') throw new Error('teacher-audio-context-suspended')
-      const audioSource = audioContext.createMediaStreamSource(captureTeacherStream)
+      const audioSource = audioContext.createMediaStreamSource(sourceStream)
       const audioGain = audioContext.createGain()
       const audioDestination = audioContext.createMediaStreamDestination()
-      audioGain.gain.value = teacher.muted ? 0 : teacher.volume
+      // With external soundtrack the video GainNode is 0; record the replacement at the UI volume instead.
+      audioGain.gain.value = externalAudioUrlRef.current
+        ? (isMuted ? 0 : volume)
+        : (playbackGainRef.current?.gain.value ?? ((window as unknown as { __adlTeacherGain?: number }).__adlTeacherGain ?? 1))
       audioSource.connect(audioGain)
       audioGain.connect(audioDestination)
       recordingAudioSourceRef.current = audioSource
@@ -824,7 +1291,7 @@ function App() {
     render()
     recordingTimerRef.current = window.setInterval(() => setRecordingElapsed((performance.now() - recordingStartedAtRef.current) / 1000), 200)
     await teacher.play()
-  }, [cleanupRecordingAudio, drawRecordingFrame, language, releaseCamera, resetToPracticeIdle, updateRecordingStatus])
+  }, [cleanupRecordingAudio, drawRecordingFrame, isMuted, language, releaseCamera, resetToPracticeIdle, updateRecordingStatus, volume])
 
   const startRecordingCountdown = useCallback(async () => {
     const video = videoRef.current
@@ -840,7 +1307,7 @@ function App() {
       return
     }
     setRecordingError('')
-    setSetupMode(false); setMarkerOpen(false); setSettingsDrawerOpen(false)
+    setMarkKind(null); setSettingsDrawerOpen(false)
     cancelPendingLoop()
     countdownRestoreRef.current = { time: video.currentTime, wasPlaying: !video.paused }
     video.pause()
@@ -926,36 +1393,56 @@ function App() {
     if (compareMode) stopCamera()
     else void startCamera()
   }, [compareMode, startCamera, stopCamera])
-  const resetPicture = () => {
-    fitTeacherVideo()
-  }
-
-  const teacherFramingControls = () => (
-    <div className="teacher-framing-controls" aria-label={text('教师画面控制', 'Teacher view controls')}>
-      <button type="button" title={text('水平翻转教师视频', 'Mirror the teacher video')} className={isMirrored ? 'active' : ''} onClick={toggleMirror}>{text('镜像', 'Mirror')}</button>
-      <button type="button" title={text('缩小教师视频', 'Zoom out of the teacher video')} aria-label={text('缩小教师视频', 'Zoom out of the teacher video')} disabled={teacherFraming.zoom <= MIN_TEACHER_ZOOM} onClick={() => changeTeacherZoom(-TEACHER_ZOOM_STEP)}>−</button>
-      <button type="button" title={text('放大教师视频', 'Zoom in on the teacher video')} aria-label={text('放大教师视频', 'Zoom in on the teacher video')} disabled={teacherFraming.zoom >= MAX_TEACHER_ZOOM} onClick={() => changeTeacherZoom(TEACHER_ZOOM_STEP)}>＋</button>
-      <button type="button" title={text('恢复完整显示、默认大小和居中位置', 'Restore the full view, default size, and centered position')} onClick={resetPicture}>{text('重置', 'Reset')}</button>
-      <button type="button" title={text('进入全屏', 'Enter fullscreen')} aria-label={text('进入全屏', 'Enter fullscreen')} onClick={() => void toggleFullscreen()}>⛶</button>
-    </div>
-  )
-
-
   const visibleTeacherFraming = clampTeacherFraming(teacherFraming)
 
   if (showLanding) return <LandingPage onStart={() => setShowLanding(false)} language={language} setLanguage={setLanguage} />
 
   return (
     <main className={`app-shell${videoUrl ? ' has-video' : ''}`}>
-      <header className="app-header">
+      {!videoUrl && <header className="app-header">
         <button type="button" className="workspace-brand" onClick={() => { stopCamera(); setShowLanding(true) }} aria-label={text('返回帧琢首页', 'Return to the FrameTune home page')}><strong>帧琢</strong><span>FrameTune</span><small>{text('测试版', 'Beta')}</small></button>
         <div className="workspace-header-tools"><p className="workspace-tagline">{text('逐帧精练，雕琢姿态', 'Refine every move, frame by frame.')}</p><div className="workspace-language" aria-label="Language"><button type="button" className={language === 'zh' ? 'active' : ''} onClick={() => setLanguage('zh')}>中文</button><span>/</span><button type="button" className={language === 'en' ? 'active' : ''} onClick={() => setLanguage('en')}>EN</button></div></div>
-      </header>
+      </header>}
       <section className="workspace">
         {!videoUrl ? (
-          <label className="upload-panel"><span className="upload-icon">＋</span><strong>{text('选择舞蹈视频', 'Choose a dance video')}</strong><span>{text('MP4、MOV 或 WebM · 文件保留在本机', 'MP4, MOV, or WebM · stays on this device')}</span><input type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" onChange={handleFileChange} /></label>
+          <><label className="upload-panel"><span className="upload-icon">＋</span><strong>{text('选择舞蹈视频', 'Choose a dance video')}</strong><span>{text('MP4、MOV 或 WebM · 文件保留在本机', 'MP4, MOV, or WebM · stays on this device')}</span><input ref={fileInputRef} type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" onChange={handleFileChange} /></label>
+          <details className="saved-details"><summary>{text('已保存的舞', 'Saved dances')}</summary><SavedDances language={language} onPick={record => openVideoPicker(record)} /></details></>
         ) : <>
+          <input ref={fileInputRef} type="file" className="hidden-file-input" tabIndex={-1} aria-label={text('选择新的舞蹈视频', 'Choose another dance video')} accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" onChange={handleFileChange} />
           <div ref={playerRef} className={`player-frame practice-player ${orientation}${compareMode ? ' comparing' : ''}${isFullscreen ? ' is-immersive' : ''}`}>
+            <div className="practice-topbar">
+              <button type="button" className="workspace-brand topbar-brand" onClick={() => { stopCamera(); setShowLanding(true) }} aria-label={text('返回帧琢首页', 'Return to the FrameTune home page')}><span className="topbar-back" aria-hidden="true">‹</span><strong>帧琢</strong></button>
+              <div className="topbar-tools" role="toolbar" aria-label={text('练习准备', 'Practice preparation')}>
+                <button type="button" aria-pressed={coach.prefs.enabled || coach.prefs.overlay} className={`topbar-toggle topbar-count${coach.prefs.enabled || coach.prefs.overlay ? ' active' : ''}`} title={text('老师数拍子：打开后自动识别 BPM、对齐动作和第 1 拍，原声静音', 'Teacher counts: BPM, motion and beat 1 are found automatically; original sound is muted')} onClick={coach.toggleQuick}>{text('数拍', 'Count')}</button>
+                <button type="button" className={`topbar-toggle${isMirrored ? ' active' : ''}`} aria-pressed={isMirrored} onClick={toggleMirror}>{text('镜像', 'Mirror')}</button>
+                <button type="button" aria-label={compareMode ? text('关闭摄像头', 'Turn camera off') : text('摄像头对比', 'Compare with camera')} aria-pressed={compareMode} title={text('同时显示本机摄像头，不录制或上传', 'Show your local camera without recording or uploading')} className={`topbar-toggle${compareMode ? ' active' : ''}`} onClick={toggleCompareMode}>{text('摄像头', 'Camera')}</button>
+                {compareMode && cameraStatus === 'active' && recordingStatus !== 'recording' && recordingStatus !== 'processing' && <button type="button" className="record-button" disabled={recordingStatus === 'countdown'} onClick={() => void startRecordingCountdown()}>{recordingStatus === 'countdown' ? text('倒计时中', 'Counting down') : text('开始录制', 'Record')}</button>}
+                {recordingStatus === 'recording' && <button type="button" className="stop-record-button" onClick={stopRecording}>{text('停止录制', 'Stop')}</button>}
+                {recordingUrl && !reviewOpen && <button type="button" className="topbar-review" aria-label={text('查看录像', 'Review recording')} onClick={() => setReviewOpen(true)}>{text('回看', 'Review')}</button>}
+              </div>
+              <div className="menu-cluster">
+                <button type="button" className="menu-more" aria-expanded={sideRailOpen} aria-label={text('更多', 'More')} title={text('数拍设置、曲速、外挂音频、视频与语言…', 'Count settings, tempo, external audio, video and language…')} onClick={() => { setSideRailOpen(value => !value); if (settingsDrawerOpen && menuPage !== 'practice') setSettingsDrawerOpen(false) }}>⋯</button>
+                {sideRailOpen && <nav className="side-rail" aria-label={text('更多选项', 'More options')}>
+                  <div className="rail-group" role="group" aria-label={text('数拍', 'Counts')}><span className="rail-label" aria-hidden="true">{text('数拍', 'COUNTS')}</span>
+                    <button type="button" className="rail-item" onClick={() => { setSideRailOpen(false); setMenuPage('practice'); setSettingsDrawerOpen(true); cancelPendingLoop(); videoRef.current?.pause(); setMarkKind(null) }}>{text('数拍与分段', 'Count & sections')}</button>
+                    <button type="button" className="rail-item" onClick={() => { setSideRailOpen(false); setSettingsDrawerOpen(false); setDockExpanded(true); setBpmEditorOpen(true) }}>{text('曲速校准', 'Song tempo (BPM)')}</button>
+                  </div>
+                  <div className="rail-group" role="group" aria-label={text('声音', 'Sound')}><span className="rail-label" aria-hidden="true">{text('声音', 'SOUND')}</span>
+                    <button type="button" className="rail-item" onClick={() => { setSideRailOpen(false); setMenuPage('audio'); setSettingsDrawerOpen(true) }}>{text('外挂音频', 'External audio')}</button>
+                  </div>
+                  <div className="rail-group" role="group" aria-label={text('视频', 'Video')}><span className="rail-label" aria-hidden="true">{text('视频', 'VIDEO')}</span>
+                    <button type="button" className="rail-item change-video-button" disabled={recordingStatus === 'recording' || recordingStatus === 'countdown' || recordingStatus === 'processing'} onClick={() => { setSideRailOpen(false); openVideoPicker() }}>{text('换视频', 'Change video')}</button>
+                    <button type="button" className="rail-item" onClick={() => { setSideRailOpen(false); setMenuPage('saved'); setSettingsDrawerOpen(true) }}>{text('已保存的舞', 'Saved dances')}</button>
+                    <button type="button" className="rail-item" aria-label={isFullscreen ? text('退出全屏', 'Exit fullscreen') : text('进入全屏', 'Enter fullscreen')} onClick={() => { setSideRailOpen(false); void toggleFullscreen() }}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5" /></svg><span aria-hidden="true">{isFullscreen ? text('退出全屏', 'Exit fullscreen') : text('全屏', 'Fullscreen')}</span></button>
+                    <button type="button" className="rail-item" onClick={() => { setSideRailOpen(false); setMenuPage('recording'); setSettingsDrawerOpen(true) }}>{text('录像设置', 'Recording settings')}</button>
+                  </div>
+                  <div className="rail-group" role="group" aria-label={text('其他', 'Other')}><span className="rail-label" aria-hidden="true">{text('其他', 'OTHER')}</span>
+                    <div className="rail-row"><span>{text('语言', 'Language')}</span><div className="seg-pill rail-language" role="group" aria-label="Language"><button type="button" className={language === 'zh' ? 'active' : ''} aria-pressed={language === 'zh'} onClick={() => setLanguage('zh')}>中文</button><button type="button" className={language === 'en' ? 'active' : ''} aria-pressed={language === 'en'} onClick={() => setLanguage('en')}>EN</button></div></div>
+                    <button type="button" className="rail-item" onClick={() => { setSideRailOpen(false); setMenuPage('help'); setSettingsDrawerOpen(true) }}>{text('使用说明', 'Help')}</button>
+                  </div>
+                </nav>}
+              </div>
+            </div>
             <div className={`video-stage${compareMode ? ' compare-mode' : ''}`}>
               <div ref={videoStageRef} className={`teacher-video-panel${canPanTeacher ? ' draggable-stage' : ''}`}
                 onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerEnd} onPointerCancel={handlePointerEnd} onLostPointerCapture={event => { gestureRef.current.end(event.pointerId, true) }}>
@@ -975,52 +1462,55 @@ function App() {
                 <span className="panel-label">{text('我的画面', 'My camera')}</span>
                 {cameraStatus === 'active' && <button type="button" title={text('只改变自己的预览方向', 'Changes only your self-view')} className={`self-mirror-button ${mirrorSelfView ? 'active' : ''}`} onClick={() => setMirrorSelfView((value) => !value)}>{text('镜像自己', 'Mirror self-view')}</button>}
               </div>}
+              <BeatOverlay videoRef={videoRef} grid={coach.grid} active={coach.prefs.overlay && !!coach.grid} delayMs={coach.prefs.delayMs} />
+              <div className="stage-status-stack">
+              {(coach.prefs.enabled || coach.prefs.overlay) && (coach.pose.status === 'loading' || coach.pose.status === 'running' || coach.pose.status === 'ready' || coach.pose.status === 'failed') && (
+                <p className={`stage-chip pose-stage-status${coach.pose.status === 'failed' ? ' is-failed' : coach.pose.status === 'ready' ? ' is-ready' : ''}`} role={coach.pose.status === 'failed' ? 'alert' : 'status'} data-testid="pose-stage-status">
+                  {coach.pose.status === 'ready' ? text('分析完成', 'Analysis done') : coach.pose.status === 'failed' ? text('分析失败', 'Analysis failed') : text('分析中', 'Analyzing')}
+                </p>
+              )}
+{(coach.prefs.enabled || coach.prefs.overlay) && (tempoStatus === 'unavailable' || tempoStatus === 'analyzing' || coach.pose.status === 'running' || coach.pose.status === 'loading') && <p className="count-auto-status stage-chip" role={tempoStatus === 'unavailable' ? 'alert' : 'status'}>{tempoStatus === 'unavailable' ? text(`没能自动识别 BPM（${tempoFailure === 'large-file' ? '视频过大' : tempoFailure === 'unsupported-audio' ? '无法解码音频' : tempoFailure === 'analysis-timeout' ? '分析超时' : tempoFailure === 'silent-audio' ? '几乎无声' : tempoFailure === 'too-short' ? '音频太短' : tempoFailure === 'unstable' ? '节拍不稳定' : '分析未完成'}）：点底栏手动输入。`, `BPM not detected (${tempoFailure || 'unknown'}): tap BPM below to type it.`) : tempoStatus === 'analyzing' ? analyzingPhaseLabel(tempoPhase, language) : text('正在分析老师动作…', 'Analyzing the teacher’s motion…')}</p>}</div>
               {recordingStatus === 'countdown' && countdownValue !== null && <div className="recording-countdown" role="status" aria-live="assertive"><strong>{countdownValue}</strong><span>{text('准备开始', 'Get ready')}</span><button type="button" onClick={cancelCountdown}>{text('取消', 'Cancel')}</button></div>}
               {recordingStatus === 'recording' && <div className="recording-live-status" role="status"><span aria-hidden="true" />{text('录制中', 'Recording')} {formatTime(recordingElapsed)}</div>}
+              {settingsDrawerOpen && <section ref={settingsDrawerRef} className={`compact-menu menu-sheet menu-sheet-${menuPage}`} aria-label={text('练习菜单', 'Practice menu')}>
+                <div className="compact-menu-header" onPointerDown={startSheetDrag} onPointerMove={moveSheetDrag} onPointerUp={endSheetDrag} onPointerCancel={endSheetDrag}><span className="sheet-grabber" aria-hidden="true" /><strong>{menuPage === 'practice' ? text('数拍与分段', 'Count & sections') : menuPage === 'audio' ? text('外挂音频', 'External audio') : menuPage === 'saved' ? text('已保存的舞', 'Saved dances') : menuPage === 'recording' ? text('录像设置', 'Recording settings') : text('使用说明', 'Help')}</strong><button type="button" className="sheet-close" onClick={() => setSettingsDrawerOpen(false)}>{text('关闭', 'Close')}</button></div>
+                {menuPage === 'practice' && <CountSettingsPanel language={language} prefs={coach.prefs} settings={coach.settings} grid={coach.grid} anchorInfo={coach.anchorInfo} countInfo={coach.countInfo} pose={coach.pose} voiceState={coach.voiceState} time={currentTime}
+                  tempoReady={tempoStatus === 'auto' || tempoStatus === 'manual'} hasMusicStart={firstBeatConfirmed && firstBeatTime !== null} hasDanceStart={formalStartTime !== null} musicStartTime={firstBeatTime} danceStartTime={formalStartTime} hasAudioOnsets={audioOnsets.length > 0}
+                  setPrefs={coach.setPrefs} updateSettings={coach.updateSettings} onToggleCount={coach.toggleQuick} onMarkMusicStart={() => beginMark('music')} onMarkDanceStart={() => beginMark('dance')} onSetHere={() => coach.updateSettings({ anchorMode: 'manual', manualAnchor: videoRef.current?.currentTime ?? currentTime })}
+                  onNudge={coach.adjustAnd} onMove={coach.moveAndTo} onResetAdjust={coach.resetAdjust} onCancelPose={coach.cancelPose} onRetryPose={coach.retryPose} onRequestPose={coach.requestPose}
+                  exporting={exportingCount} onExport={() => { setExportingCount(true); void coach.exportWav().then(blob => { if (!blob) return; const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `${fileName.replace(/\.[^.]+$/, '')}-count.wav`; link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 4000) }).finally(() => setExportingCount(false)) }}
+                  segmentMode={segmentMode} onSegmentMode={switchSegmentMode} sectionCount={learningSegments.length}
+                  segmentsEditor={segmentMode === 'custom' ? <CustomCutsEditor language={language} cuts={customCuts} duration={duration} currentTime={currentTime} liveRange={(() => { const segs = customSegments; if (!segs.length) return null; const idx = Math.min(Math.max(0, segmentIndexAt(segs, currentTime)), segs.length - 1); const s = segs[idx]; return { index: idx + 1, start: s.startTime, end: s.endTime } })()} onAdd={addCustomCut} onMove={moveCustomCut} onRemove={index => setCustomCuts(removeCut(customCuts, index))} onSeek={pauseAndSeek} />
+                    : learningSegments.length > 0 ? <><p role="status" className="cut-live-range">{(() => { const idx = Math.min(Math.max(0, safeSegmentIndex), learningSegments.length - 1); const s = learningSegments[idx]; return text(`第 ${idx + 1} 段 ${s.startTime.toFixed(2)}–${s.endTime.toFixed(2)}s`, `Section ${idx + 1} ${s.startTime.toFixed(2)}–${s.endTime.toFixed(2)}s`) })()}</p>{(tempoStatus !== 'auto' && tempoStatus !== 'manual') && <p role="status" className="segment-temp-note">{text(`临时按曲速 ${segmentBpm} 分段；确认 BPM 后会按真实曲速重算。`, `Temporary sections at song tempo ${segmentBpm}; they rebuild when BPM is confirmed.`)}</p>}<div className="inline-controls"><button type="button" onClick={() => setBoundaryOffsets(current => { const next = [...current]; next[selectedBoundaryIndex] = 0; return next })}>{text('恢复自动分界', 'Restore auto boundary')}</button></div><p>{text('进度条保持干净（段号在下方按钮）；打开本页时拖进度条到新位置松手可改最近分界（即时生效）。', 'The progress bar stays clean (section numbers are below); with this page open, scrub and release to move the nearest boundary — applies immediately.')}</p></>
+                      : <p>{text('先标记音乐与动作起点，生成至少两段。', 'Mark both starts to create at least two sections.')}</p>}
+                />}
+                {menuPage === 'audio' && <ExternalAudioPanel language={language} fileName={externalAudioName} offsetSeconds={audioOffset} alignStatus={alignStatus} alignScore={alignScore} inputRef={audioInputRef} accept={EXTERNAL_AUDIO_ACCEPT} onPick={handleExternalAudioChange} onClear={clearExternalAudio} onOffset={value => { const next = Math.min(30, Math.max(-30, Math.round(value * 100) / 100)); setAudioOffset(next); audioOffsetRef.current = next; syncExternalAudio(true) }} onRealign={() => { void runExternalAlign() }} />}
+                {menuPage === 'saved' && <div className="compact-menu-body"><SavedDances language={language} onPick={record => openVideoPicker(record)} /></div>}
+                {menuPage === 'recording' && <div className="compact-menu-body"><label>{text('倒计时', 'Countdown')} <select aria-label={text('录制倒计时', 'Recording countdown')} value={countdownSeconds} disabled={recordingStatus === 'countdown' || recordingStatus === 'recording'} onChange={event => setCountdownSeconds(Number(event.target.value) as 3 | 5 | 10)}>{[3,5,10].map(value => <option key={value} value={value}>{value}s</option>)}</select></label><p>{text('只录老师声音，不录麦克风；录像不上传。', 'Teacher audio only. No microphone, no uploads.')}</p>{recordingAudioNotice && <p role="status">{recordingAudioNotice}</p>}{recordingError && <p role="alert">{recordingError}</p>}</div>}
+                {menuPage === 'help' && <div className="compact-menu-body"><p>{text('底栏点「音乐」→ 进度条高亮 → 在 bar 上点一下确认音乐起点；再点「动作」→ 拖到动作开始处确认。数拍第 1 拍优先用手标。', 'Dock: tap Music → bar highlights → tap to confirm; then Dance → drag and confirm. Beat 1 prefers your markers.')}</p><p>{text('底栏「自定义」拖到第一小节终点确认即可按长度均分。复杂项（数拍方式/音色/and/原声）在 ⋯ → 数拍与分段；数拍疏密（×2/÷2）在点开 BPM 数字后的曲速校准里。BPM 失败时列出最佳候选供一键采用。', 'Dock Custom tiles the first-section length. Count style / voice / and / original sound live under ⋯ → Count & sections; count density (×2/÷2) is in the tempo editor behind the BPM number. On BPM failure, best candidates appear for one-tap adopt.')}</p><p>{text('⋯ 里分组：数拍（数拍与分段、曲速校准）、声音（外挂音频）、视频（换视频、已保存的舞、全屏、录像设置）、其他（语言、使用说明）。镜像与缩放手势仍可用。', '⋯ groups: Counts (count & sections, song tempo), Sound (external audio), Video (change video, saved dances, fullscreen, recording), Other (language, help). Mirror and pinch-zoom still work.')}</p><p title={fileName}>{fileName} · {formatFileSize(fileSize)}</p></div>}
+              </section>}
             </div>
             <canvas ref={recordingCanvasRef} className="recording-canvas" aria-hidden="true" />
-            <div className="video-quick-controls" aria-label={text('练习准备', 'Practice preparation')}>
-              <button type="button" className={isMirrored ? 'active' : ''} aria-pressed={isMirrored} onClick={toggleMirror}>{text('镜像', 'Mirror')}</button>
-              <button type="button" aria-label={compareMode ? text('关闭摄像头', 'Turn camera off') : text('摄像头对比', 'Compare with camera')} aria-pressed={compareMode} title={text('同时显示本机摄像头，不录制或上传', 'Show your local camera without recording or uploading')} className={compareMode ? 'active' : ''} onClick={toggleCompareMode}>{text('摄像头', 'Camera')}</button>
-              {compareMode && cameraStatus === 'active' && recordingStatus !== 'recording' && recordingStatus !== 'processing' && <button type="button" className="record-button" disabled={recordingStatus === 'countdown'} onClick={() => void startRecordingCountdown()}>{recordingStatus === 'countdown' ? text('倒计时中', 'Counting down') : text('开始录制', 'Record')}</button>}
-              {recordingStatus === 'recording' && <button type="button" className="stop-record-button" onClick={stopRecording}>{text('停止录制', 'Stop')}</button>}
-              {recordingUrl && !reviewOpen && <button type="button" onClick={() => setReviewOpen(true)}>{text('查看录像', 'Review recording')}</button>}
-              <button type="button" aria-expanded={settingsDrawerOpen} onClick={() => { setSettingsDrawerOpen(value => !value); setMenuPage('main') }}>{text('菜单', 'Menu')}</button>
-              <button type="button" aria-label={isFullscreen ? text('退出全屏', 'Exit fullscreen') : text('进入全屏', 'Enter fullscreen')} onClick={() => void toggleFullscreen()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5" /></svg></button>
-            </div>
             <PracticeDock language={language} expanded={dockExpanded} onExpanded={setDockExpanded} speed={speed} speeds={SPEEDS} onSpeed={changeSpeed}
               sections={learningSegments} selected={safeSegmentIndex} rangeMode={rangeMode} onRange={selectPracticeRange} onSection={changeSegment} playing={isPlaying} waiting={isLoopWaiting} onPlay={() => void togglePlayback()}
+              loop={playbackMode === 'loop'} onLoop={value => changePlaybackMode(value ? 'loop' : 'continuous')}
               hint={dockHint} onDismissHint={() => { setDockHint(false); safeStorage.setItem('adl-dock-hint', 'dismissed') }}
               timeline={<>
-                {setupMode && <div className="marker-setup"><span role="status">{setupStep === 'music' ? text('1. 移动进度条，确认音乐起点。', '1. Seek, then confirm Music start.') : text('2. 移到动作开始处，确认动作起点。', '2. Seek to the first move; confirm Dance start.')}</span><button type="button" onClick={() => { setSetupMode(false); setMarkerOpen(false) }}>{text('退出设置', 'Exit setup')}</button></div>}
-                <div className="start-markers">{(setupMode || firstBeatConfirmed) && <><span>{text('音乐', 'Music')} {firstBeatConfirmed && firstBeatTime !== null ? firstBeatTime.toFixed(2) + 's' : '—'}</span><span>{text('动作', 'Dance')} {formalStartTime === null ? '—' : formalStartTime.toFixed(2) + 's'}</span></>}<span className="tempo-state" role="status">{tempoStatus === 'editing' ? text('请确认BPM', 'Confirm BPM') : tempoStatus === 'analyzing' ? text('识别BPM中…', 'Detecting BPM…') : tempoStatus === 'unavailable' ? text('未识别BPM · 菜单可重试', 'BPM not detected · Retry in menu') : text(tempoStatus === 'auto' ? '自动 ' : '手动 ', tempoStatus === 'auto' ? 'Auto ' : 'Manual ') + bpm + ' BPM'}</span></div>
-                <div className="timeline-row"><span>{setupMode || menuPage === 'custom' ? currentTime.toFixed(2) : formatTime(currentTime)}</span><input aria-label={text('视频进度', 'Video timeline')} type="range" min="0" max={duration || 0} step="0.01" value={Math.min(currentTime, duration || 0)} onChange={event => { pauseAndSeek(Number(event.target.value)); if (setupMode) setMarkerOpen(true) }} onPointerUp={() => { if (setupMode) setMarkerOpen(true) }} /><span>{formatTime(duration)}</span></div>
-                {setupMode && markerOpen && <div className="marker-options" aria-label={text('标记起点', 'Mark a start')}><button type="button" onClick={() => markTimelineStart('music')}>{text('音乐起点', 'Music start')}</button><button type="button" disabled={setupStep !== 'dance'} onClick={() => markTimelineStart('dance')}>{text('动作起点', 'Dance start')}</button></div>}
+                {markKind && <div className="marker-setup" role="status"><span>{markKind === 'music' ? text('在进度条上点一下 = 确认音乐起点', 'Tap the bar once to confirm music start') : markKind === 'dance' ? text('拖到动作开始处，松手或点确认 = 动作起点', 'Drag to the first move, then release or tap Confirm') : text('拖到第一小节终点，松手或点确认 = 按该长度均分', 'Drag to end of first section, then release or tap Confirm')}</span><button type="button" className="confirm-button" onClick={confirmMarkAtPlayhead}>{text('确认', 'Confirm')}</button><button type="button" onClick={() => setMarkKind(null)}>{text('取消', 'Cancel')}</button></div>}
+                <div className="start-markers">
+                  <button type="button" className={`mark-chip${markKind === 'music' ? ' active' : ''}${firstBeatConfirmed ? ' set' : ''}`} aria-pressed={markKind === 'music'} title={text('点「音乐」→ 在进度条上点一下确认', 'Tap Music, then tap the bar to confirm')} onClick={() => beginMark('music')}><span className="step-num" aria-hidden="true">1</span>{text('音乐', 'Music')} {firstBeatConfirmed && firstBeatTime !== null ? firstBeatTime.toFixed(2) + 's' : '—'}</button>
+                  <span className={`step-line${firstBeatConfirmed ? ' is-lit' : ''}`} aria-hidden="true" />
+                  <button type="button" className={`mark-chip${markKind === 'dance' ? ' active' : ''}${formalStartTime !== null ? ' set' : ''}`} aria-pressed={markKind === 'dance'} title={text('点「动作」→ 拖进度条再确认', 'Tap Dance, drag the bar, then confirm')} onClick={() => beginMark('dance')}><span className="step-num" aria-hidden="true">2</span>{text('动作', 'Dance')} {formalStartTime === null ? '—' : formalStartTime.toFixed(2) + 's'}</button>
+                  <button type="button" className={`mark-chip mark-chip-small${markKind === 'customFirst' ? ' active' : ''}`} aria-pressed={markKind === 'customFirst'} title={text('自定义：拖出第一小节长度，整段均分', 'Custom: mark first-section length, then tile')} onClick={() => beginMark('customFirst')}>{text('自定义', 'Custom')}</button>
+                  <BpmChip language={language} status={tempoStatus} bpm={bpm} source={tempoSource} open={bpmEditorOpen} failure={tempoFailure} phase={tempoPhase} onToggle={() => setBpmEditorOpen(value => !value)} />
+                </div>
+                {bpmEditorOpen && <BpmEditor language={language} bpm={tempoStatus === 'unavailable' || tempoStatus === 'analyzing' ? null : bpm} alternatives={tempoAlternatives} countInfo={coach.countInfo} onLevelShift={coach.shiftLevel} failure={tempoFailure} analyzing={tempoStatus === 'analyzing'} phase={tempoPhase} onRetry={() => { if (fileRef.current) runTempoAnalysis(fileRef.current, bpm, { force: true }) }} onCommit={value => { applyBpm(value); setBpmEditorOpen(false) }} onClose={() => setBpmEditorOpen(false)} />}
+                <div className="timeline-row"><span>{markKind || (settingsDrawerOpen && menuPage === 'practice') ? currentTime.toFixed(2) : formatTime(currentTime)}</span><div className={`timeline-track${markKind || (settingsDrawerOpen && menuPage === 'practice' && segmentMode === 'custom') ? ' timeline-highlight' : ''}`}><input ref={timelineRef} aria-label={text('视频进度', 'Video timeline')} type="range" min="0" max={duration || 0} step="0.01" value={Math.min(currentTime, duration || 0)} onChange={event => pauseAndSeek(Number(event.target.value))} onPointerUp={() => { if (markKind) { confirmMarkAtPlayhead(); return } if (settingsDrawerOpen && menuPage === 'practice' && segmentMode === 'beats' && learningSegments.length > 1) applyBoundaryAtPlayhead(); else resumeAfterScrub() }} onTouchEnd={() => { if (markKind) { confirmMarkAtPlayhead(); return } if (settingsDrawerOpen && menuPage === 'practice' && segmentMode === 'beats' && learningSegments.length > 1) applyBoundaryAtPlayhead(); else resumeAfterScrub() }} /></div><span>{formatTime(duration)}</span></div>
                 {error && <p className="dock-error" role="alert">{error}</p>}
                 {recordingError && <p className="dock-error" role="alert">{recordingError}</p>}
                 {recordingAudioNotice && <p className="dock-notice" role="status">{recordingAudioNotice}</p>}
                 {recordingStatus === 'processing' && <p className="dock-notice" role="status">{text('正在生成录像…', 'Preparing recording…')}</p>}
               </>}
-              menu={settingsDrawerOpen && <section ref={settingsDrawerRef} className="compact-menu" aria-label={text('练习菜单', 'Practice menu')}>
-                <div className="compact-menu-header"><strong>{menuPage === 'main' ? text('菜单', 'Menu') : menuPage === 'tempo' ? text('节拍校准', 'Beat calibration') : menuPage === 'custom' ? text('自定义分段', 'Custom sections') : menuPage === 'recording' ? text('录像设置', 'Recording settings') : menuPage === 'sound' ? text('声音', 'Sound') : menuPage === 'view' ? text('画面', 'View') : text('使用说明', 'Help')}</strong><button type="button" onClick={() => menuPage === 'main' ? setSettingsDrawerOpen(false) : setMenuPage('main')}>{menuPage === 'main' ? text('关闭', 'Close') : text('返回', 'Back')}</button></div>
-                {menuPage === 'main' && <div className="compact-menu-items">
-                  <button type="button" onClick={() => { cancelPendingLoop(); videoRef.current?.pause(); setSetupMode(true); setSetupStep('music'); setMarkerOpen(false); setSettingsDrawerOpen(false); setMenuPage('main') }}>{text('练习设置', 'Practice setup')}</button>
-                  <button type="button" onClick={() => setMenuPage('tempo')}>{text('节拍校准', 'Beat calibration')}{tempoStatus === 'unavailable' ? ' · !' : ''}</button>
-                  <button type="button" onClick={() => { setMenuPage('custom'); setSetupMode(false); if (learningSegments.length > 1) pauseAndSeek(learningSegments[selectedBoundaryIndex]?.endTime ?? learningSegments[0].endTime) }}>{text('自定义分段', 'Custom sections')}</button>
-                  <button type="button" onClick={() => setMenuPage('sound')}>{text('声音', 'Sound')}</button>
-                  <button type="button" onClick={() => setMenuPage('recording')}>{text('录像设置', 'Recording settings')}</button>
-                  <button type="button" onClick={() => setMenuPage('view')}>{text('画面', 'View')}</button>
-                  <button type="button" onClick={() => changePlaybackMode(playbackMode === 'loop' ? 'continuous' : 'loop')}>{playbackMode === 'loop' ? text('循环 · 停2秒', 'Repeat · 2s rest') : text('播放一次', 'Play once')}</button>
-                  <label className="button-link">{text('更换视频', 'Replace video')}<input type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" disabled={recordingStatus === 'recording' || recordingStatus === 'countdown' || recordingStatus === 'processing'} onChange={handleFileChange} /></label>
-                  <button type="button" onClick={() => setMenuPage('help')}>{text('使用说明', 'Help')}</button>
-                </div>}
-                {menuPage === 'tempo' && <div className="compact-menu-body"><p role="status">{tempoStatus === 'editing' ? text('确认输入的BPM。', 'Confirm your BPM.') : tempoStatus === 'analyzing' ? text('正在本机分析音乐。', 'Analyzing music on this device.') : tempoStatus === 'auto' ? text('已自动识别BPM；不准确时可校准。', 'BPM detected. Adjust if needed.') : tempoStatus === 'unavailable' ? tempoFailure === 'large-file' ? text('视频超过150MB，暂不能本机分析。', 'Video exceeds 150MB; local analysis unavailable.') : tempoFailure === 'unsupported-audio' ? text('无法读取视频声音，可换视频重试。', 'Cannot read audio. Try another video.') : tempoFailure === 'analysis-timeout' ? text('分析超时，请重新分析。', 'Analysis timed out. Try again.') : tempoFailure === 'unstable' ? text('未找到稳定BPM，可重试或手动校准。', 'No stable BPM. Retry or calibrate manually.') : text('分析未完成，请重新分析。', 'Analysis could not finish. Try again.') : text('当前使用已保存或手动节拍。', 'Using saved or manual tempo.')}</p><div className="inline-controls"><input aria-label={text('每分钟节拍数', 'Beats per minute')} placeholder="BPM" type="number" min="40" max="240" value={bpmInput} onChange={event => { analysisRef.current?.abort(); cancelPendingLoop(); videoRef.current?.pause(); setBpmInput(event.target.value); setBpmError(''); setTempoStatus('editing'); setTempoFailure('') }} /><button type="button" disabled={!bpmInput} onClick={applyBpm}>{text('确认', 'Confirm')}</button><button type="button" disabled={tempoStatus === 'analyzing'} onClick={() => { if (fileRef.current) runTempoAnalysis(fileRef.current, bpm) }}>{text('重新分析', 'Analyze again')}</button></div>{bpmError && <p role="alert">{bpmError}</p>}</div>}
-                {menuPage === 'custom' && <div className="compact-menu-body">{learningSegments.length > 1 ? <><div className="inline-controls"><select aria-label={text('分界', 'Boundary')} value={Math.min(selectedBoundaryIndex, learningSegments.length - 2)} onChange={event => { const index = Number(event.target.value); setSelectedBoundaryIndex(index); pauseAndSeek(learningSegments[index].endTime) }}>{learningSegments.slice(0, -1).map((segment, index) => <option value={index} key={segment.segmentIndex}>{index + 1} / {index + 2}</option>)}</select><button type="button" className="confirm-button" onClick={confirmSelectedBoundary}>{text('确认此处分段', 'Set boundary here')}</button><button type="button" onClick={() => setBoundaryOffsets(current => { const next = [...current]; next[selectedBoundaryIndex] = 0; return next })}>{text('恢复自动', 'Restore auto')}</button></div><p>{text('拖动下面进度条，再确认。', 'Seek below, then confirm.')}</p></> : <p>{text('先标记音乐与动作起点，生成至少两段。', 'Mark both starts to create at least two sections.')}</p>}</div>}
-                {menuPage === 'sound' && <div className="compact-menu-body inline-controls"><button type="button" onClick={toggleMute}>{isMuted || volume === 0 ? text('取消静音', 'Unmute') : text('静音', 'Mute')}</button><input aria-label={text('音量', 'Volume')} type="range" min="0" max="1" step=".05" value={volume} onChange={changeVolume} /></div>}
-                {menuPage === 'view' && <div className="compact-menu-body">{teacherFramingControls()}<p>{text('双指缩放，放大后拖动。重置恢复完整画面、默认大小和居中。', 'Pinch to zoom; drag to move. Reset restores full view, default size and center.')}</p></div>}
-                {menuPage === 'recording' && <div className="compact-menu-body"><label>{text('倒计时', 'Countdown')} <select aria-label={text('录制倒计时', 'Recording countdown')} value={countdownSeconds} disabled={recordingStatus === 'countdown' || recordingStatus === 'recording'} onChange={event => setCountdownSeconds(Number(event.target.value) as 3 | 5 | 10)}>{[3,5,10].map(value => <option key={value} value={value}>{value}s</option>)}</select></label><p>{text('只录老师声音，不录麦克风；录像不上传。', 'Teacher audio only. No microphone, no uploads.')}</p>{recordingAudioNotice && <p role="status">{recordingAudioNotice}</p>}{recordingError && <p role="alert">{recordingError}</p>}</div>}
-                {menuPage === 'help' && <div className="compact-menu-body"><p>{text('练习设置：拖进度条，先确认音乐起点，再确认动作起点，不用重开菜单。自动按八拍分段，第1段带预备拍。单段选3只练第3段；累加选3练第1–3段。箭头收起或展开段号。', 'Setup: seek and confirm Music start, then Dance start without reopening the menu. Auto sections use eight beats; section 1 includes preparation. Single + 3 practices section 3. Build-up + 3 practices 1–3. The arrow folds or opens section numbers.')}</p><p>{text('导入后自动识别音乐BPM，不识别动作。音乐不稳定时可重新分析或校准。', 'BPM is detected on import, not dance moves. Retry or calibrate if the rhythm is unclear.')}</p><p title={fileName}>{fileName} · {formatFileSize(fileSize)}</p></div>}
-              </section>}
             />
           </div>
 
@@ -1037,6 +1527,10 @@ function App() {
         </>}
         {!videoUrl && error && <p className="error-message" role="alert">{error}</p>}
       </section>
+      {(pickHint || notice) && <div className="pick-toast" role="status">
+        <span>{pickHint ? text(`请选择视频文件「${pickHint.name}」，文件一致会自动恢复对齐。`, `Choose the video file "${pickHint.name}"; if it matches, alignment is restored automatically.`) : notice}</span>
+        <button type="button" aria-label={text('关闭提示', 'Dismiss')} onClick={() => { setPickHint(null); setNotice('') }}>×</button>
+      </div>}
     </main>
   )
 }

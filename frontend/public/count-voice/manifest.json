@@ -1,0 +1,116 @@
+{
+ "male": {
+  "one": {
+   "duration": 0.25,
+   "anchor": 0.0442
+  },
+  "two": {
+   "duration": 0.25,
+   "anchor": 0.0857
+  },
+  "three": {
+   "duration": 0.25,
+   "anchor": 0.11
+  },
+  "four": {
+   "duration": 0.2389,
+   "anchor": 0.0115
+  },
+  "five": {
+   "duration": 0.25,
+   "anchor": 0.01
+  },
+  "six": {
+   "duration": 0.25,
+   "anchor": 0.064
+  },
+  "seven": {
+   "duration": 0.25,
+   "anchor": 0.1098
+  },
+  "eight": {
+   "duration": 0.1987,
+   "anchor": 0.0088
+  },
+  "and": {
+   "duration": 0.15,
+   "anchor": 0.0046
+  }
+ },
+ "male2": {
+  "one": {
+   "duration": 0.25,
+   "anchor": 0.0485
+  },
+  "two": {
+   "duration": 0.25,
+   "anchor": 0.0712
+  },
+  "three": {
+   "duration": 0.25,
+   "anchor": 0.0291
+  },
+  "four": {
+   "duration": 0.25,
+   "anchor": 0.0259
+  },
+  "five": {
+   "duration": 0.25,
+   "anchor": 0.0109
+  },
+  "six": {
+   "duration": 0.25,
+   "anchor": 0.065
+  },
+  "seven": {
+   "duration": 0.25,
+   "anchor": 0.11
+  },
+  "eight": {
+   "duration": 0.2048,
+   "anchor": 0.0279
+  },
+  "and": {
+   "duration": 0.15,
+   "anchor": 0.0134
+  }
+ },
+ "female": {
+  "one": {
+   "duration": 0.25,
+   "anchor": 0.0433
+  },
+  "two": {
+   "duration": 0.25,
+   "anchor": 0.11
+  },
+  "three": {
+   "duration": 0.25,
+   "anchor": 0.0264
+  },
+  "four": {
+   "duration": 0.25,
+   "anchor": 0.11
+  },
+  "five": {
+   "duration": 0.25,
+   "anchor": 0.0842
+  },
+  "six": {
+   "duration": 0.25,
+   "anchor": 0.11
+  },
+  "seven": {
+   "duration": 0.25,
+   "anchor": 0.11
+  },
+  "eight": {
+   "duration": 0.25,
+   "anchor": 0.0094
+  },
+  "and": {
+   "duration": 0.15,
+   "anchor": 0.0146
+  }
+ }
+}

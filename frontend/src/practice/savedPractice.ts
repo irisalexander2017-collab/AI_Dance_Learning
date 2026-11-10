@@ -1,4 +1,8 @@
 import type { PracticeRangeMode } from './beatTimeline'
+import { normalizeCuts, type SegmentMode } from './customSegments.ts'
+
+/** Where the stored BPM came from: filename catalog, embedded file tag, audio onset analysis or the user. */
+export type TempoSource = 'matched' | 'tag' | 'onset' | 'manual' | 'unset'
 
 export interface SavedPracticeState {
   schemaVersion: 2
@@ -13,6 +17,10 @@ export interface SavedPracticeState {
   rangeMode: PracticeRangeMode
   playbackMode: 'loop' | 'continuous'
   boundaryOffsets: number[]
+  /** Added in the count-voice update; absent in older saves. The two segmentations are stored independently. */
+  tempoSource: TempoSource
+  segmentMode: SegmentMode
+  customCuts: number[]
 }
 export function normalizePracticeState(value: unknown): SavedPracticeState {
   const stored = value && typeof value === 'object' ? value as Record<string, unknown> : {}
@@ -34,5 +42,8 @@ export function normalizePracticeState(value: unknown): SavedPracticeState {
     rangeMode: stored.rangeMode === 'from-start' ? 'from-start' : 'current',
     playbackMode: stored.playbackMode === 'continuous' ? 'continuous' : 'loop',
     boundaryOffsets: Array.isArray(stored.boundaryOffsets) ? stored.boundaryOffsets.filter((value): value is number => typeof value === 'number' && Number.isFinite(value)) : [],
+    tempoSource: stored.tempoSource === 'matched' || stored.tempoSource === 'tag' || stored.tempoSource === 'onset' || stored.tempoSource === 'manual' ? stored.tempoSource : 'unset',
+    segmentMode: stored.segmentMode === 'custom' ? 'custom' : 'beats',
+    customCuts: Array.isArray(stored.customCuts) ? normalizeCuts(stored.customCuts.filter((value): value is number => typeof value === 'number'), 0) : [],
   }
 }
